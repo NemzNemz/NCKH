@@ -1,4 +1,16 @@
 #include <HardwareSerial.h>
+#include "SPI.h"
+#include "Adafruit_GFX.h"
+#include "Adafruit_ILI9341.h"
+
+// Đám này cho LCD ILI9341
+#define TFT_CS 0
+#define TFT_DC 2
+#define TFT_MOSI 14
+#define TFT_SCLK 12
+#define TFT_RST 13
+Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
+
 //Cau hinh chan
 #define ZIGBEE_RX 16
 #define ZIGBEE_TX 17
@@ -24,6 +36,17 @@ TaskHandle_t print_data;
 //bien kiem soat reply cua Slave
 volatile bool rep;
 
+void Display(){
+  tft.begin();
+  tft.setRotation(1);
+  tft.fillScreen(ILI9341_BLACK);
+  tft.setTextColor(ILI9341_BLUE, ILI9341_BLACK);
+  tft.setTextSize(2);
+
+  tft.setCursor(20, 10);
+  tft.println("NCKH HELLO");
+}
+
 void setup() {
     Serial.begin(BAUD_RATE);
     zigbeeSerial.begin(BAUD_RATE, SERIAL_8N1, ZIGBEE_RX, ZIGBEE_TX);
@@ -34,6 +57,8 @@ void setup() {
         Serial.println("Không tạo được queue log!");
         while (1);
     }
+
+    Display();
 
     // Tao tak
     xTaskCreatePinnedToCore(poll_id, "Chon ID", 2048, NULL, 1, &slave_id, 1);
