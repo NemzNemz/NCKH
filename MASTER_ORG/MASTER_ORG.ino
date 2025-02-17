@@ -43,7 +43,7 @@ void Display(){
   tft.setTextColor(ILI9341_BLUE, ILI9341_BLACK);
   tft.setTextSize(2);
 
-  tft.setCursor(20, 10);
+  tft.setCursor(20, 20);
   tft.println("NCKH HELLO");
 }
 
@@ -59,11 +59,12 @@ void setup() {
     }
 
     Display();
+    
 
     // Tao tak
     xTaskCreatePinnedToCore(poll_id, "Chon ID", 2048, NULL, 1, &slave_id, 1);
     xTaskCreatePinnedToCore(doc_zigbee, "Doc zigbee", 4096, NULL, 1, &read_zigbee, 1);
-    xTaskCreatePinnedToCore(in_data, "In data", 4096, NULL, 1, &print_data, 1);
+    xTaskCreatePinnedToCore(in_data, "In data", 8192, NULL, 1, &print_data, 1);
 }
 
 void poll_id(void *pvParameters) {
@@ -124,7 +125,7 @@ void poll_id(void *pvParameters) {
 
             *ptr_slave_ID = 1;
         }
-        vTaskDelay(2000 / portTICK_PERIOD_MS);
+        vTaskDelay(5000 / portTICK_PERIOD_MS);
     }
 }
 
@@ -158,9 +159,28 @@ void in_data(void *pvParameters) {
     while (true) {
         if (xQueueReceive(queue1, &received_data, 0)) {
             Serial.println(received_data);
+            
+            String str = String(received_data);
+            // Thử chuyển đổi chuỗi thành số
+            float waterVal = str.toFloat();
+            
+            // Nếu là một số hợp lệ (không phải text thông báo)
+            if (waterVal >= 0.0) {  // Giả sử giá trị nước không âm
+                // Xóa vùng hiển thị cũ
+                tft.fillRect(30, 90, 200, 30, ILI9341_BLACK);
+                
+                // Hiển thị giá trị mới
+                tft.setCursor(30, 90);
+                tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
+                tft.setTextSize(2);
+                tft.print("Water = ");
+                tft.print(waterVal, 2);
+                tft.println("%");
+            }
         }
         vTaskDelay(50 / portTICK_PERIOD_MS);
     }
 }
+
 
 void loop() {}
