@@ -2,73 +2,84 @@
 #include "SPI.h"
 #include "Adafruit_GFX.h"
 #include "Adafruit_ILI9341.h"
+#include "MASTER_PIN_CFG.h"
 
-// Đám này cho LCD ILI9341
-#define TFT_CS 0
-#define TFT_DC 2
-#define TFT_MOSI 14
-#define TFT_SCLK 12
-#define TFT_RST 13
-Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
+//Chu y, can khoi tao 1 con tro toan cuc, neu ko se bi gan gia tri rac?? (Trong khi da dinh nghia toan cuc?), LCD ko chay! Kien thuc chua duoc hoc !
+Adafruit_ILI9341 *tft = NULL;
 
-//Cau hinh chan
-#define ZIGBEE_RX 16
-#define ZIGBEE_TX 17
 HardwareSerial zigbeeSerial(1); // ESP32: TX=17, RX=16 (Zigbee)
 
 //Giao thuc ket noi
-#define BAUD_RATE 115200
-#define LOG_SIZE 10
-#define MESS_SIZE 100
-#define TIME_OUT 2000 //Thoi gian rep la 2s cho Slave
-
-uint8_t slave_ID = 1;
-uint8_t* ptr_slave_ID = &slave_ID;
+typedef struct protocol_cfg{
+  const int BAUD_RATE = 115200;
+  const uint8_t LOG_SIZE = 10;
+  const uint8_t MESS_SIZE = 100;
+  const uint16_t TIME_OUT = 2000;//2s Slave rep
+}protocol;
+protocol ptl;
 
 //Hang doi
 QueueHandle_t queue1;
 
 //Cac task
-TaskHandle_t slave_id;
-TaskHandle_t read_zigbee;
-TaskHandle_t print_data;
+typedef struct RTOS_Task{
+  TaskHandle_t slave_id;
+  TaskHandle_t read_zigbee;
+  TaskHandle_t print_data;
+}Task_Handle;
+Task_Handle task;
+
+uint8_t slave_ID = 1;
+uint8_t* ptr_slave_ID = &slave_ID;
 
 //bien kiem soat reply cua Slave
 volatile bool rep;
 
-void Display(){
-  tft.begin();
-  tft.setRotation(1);
-  tft.fillScreen(ILI9341_BLACK);
-  tft.setTextColor(ILI9341_BLUE, ILI9341_BLACK);
-  tft.setTextSize(2);
+void freeTFT() {
+    if (tft) { 
+        delete tft; 
+        tft = NULL; //Tranh dangling pointer
+    }
+}
 
-  tft.setCursor(20, 20);
-  tft.println("NCKH HELLO");
+void Display(){
+  tft->begin();
+  tft->setRotation(2);
+  tft->fillScreen(ILI9341_BLACK);
+  tft->setTextColor(ILI9341_BLUE, ILI9341_BLACK);
+  tft->setTextSize(2);
+
+  tft->setCursor(20, 20);
+  tft->println("NCKH HELLO");
 }
 
 void setup() {
-    Serial.begin(BAUD_RATE);
-    zigbeeSerial.begin(BAUD_RATE, SERIAL_8N1, ZIGBEE_RX, ZIGBEE_TX);
+    Serial.begin(ptl.BAUD_RATE);
+    zigbeeSerial.begin(ptl.BAUD_RATE, SERIAL_8N1, pin.ZIGBEE_RX, pin.ZIGBEE_TX);
+    lcd_init(&lcd);
+    peripheral_init(&pin);
 
-    // Tao queue
-    queue1 = xQueueCreate(LOG_SIZE, sizeof(char[MESS_SIZE]));
+    freeTFT();
+    //Cach fix cua Claude, kien thuc chua duoc hoc!
+    //Lien quan den thu tu khoi tao, nhung goi ham truoc Adafruit thi se ko hop le
+    //Chu y cap phat dong "new"
+    tft = new Adafruit_ILI9341(lcd.TFT_CS, lcd.TFT_DC, lcd.TFT_MOSI, lcd.TFT_SCLK, lcd.TFT_RST);
+
+    queue1 = xQueueCreate(ptl.LOG_SIZE, sizeof(char[ptl.MESS_SIZE]));
     if (!queue1) {
         Serial.println("Không tạo được queue log!");
         while (1);
     }
-
     Display();
-    
 
     // Tao tak
-    xTaskCreatePinnedToCore(poll_id, "Chon ID", 2048, NULL, 1, &slave_id, 1);
-    xTaskCreatePinnedToCore(doc_zigbee, "Doc zigbee", 4096, NULL, 1, &read_zigbee, 1);
-    xTaskCreatePinnedToCore(in_data, "In data", 8192, NULL, 1, &print_data, 1);
+    xTaskCreatePinnedToCore(poll_id, "Chon ID", 2048, NULL, 1, &task.slave_id, 1);
+    xTaskCreatePinnedToCore(doc_zigbee, "Doc zigbee", 4096, NULL, 1, &task. read_zigbee, 1);
+    xTaskCreatePinnedToCore(in_data, "In data", 8192, NULL, 1, &task.print_data, 1);
 }
 
 void poll_id(void *pvParameters) {
-  char log[MESS_SIZE];
+  char log[ptl.MESS_SIZE];
     while (true) {
         if (*ptr_slave_ID == 1) {
             zigbeeSerial.println("SLV_01");
@@ -84,21 +95,19 @@ void poll_id(void *pvParameters) {
             bool het_gio = true;
 
             //Neu thoi gian rep duoi 2s, out 
-            while((millis()- bat_dau) < TIME_OUT){
+            while((millis()- bat_dau) < ptl.TIME_OUT){
               if(rep){
                 het_gio = false;
                 break;
               }
               vTaskDelay(50 / portTICK_PERIOD_MS);
             }
-
             //Neu qua 2s, in ra log 
             if(het_gio){
               snprintf(log, sizeof(log), "Het gio cho tn cua SLAVE 1");
               xQueueSend(queue1, &log, 0);
             }
             *ptr_slave_ID = 2;
-
         //Tuong tu ben tren
         } else if (*ptr_slave_ID == 2) {
             zigbeeSerial.println("SLV_02");
@@ -110,19 +119,17 @@ void poll_id(void *pvParameters) {
             unsigned long bat_dau2 = millis();
             bool het_gio2 = true;
 
-            while((millis() - bat_dau2) < TIME_OUT){
+            while((millis() - bat_dau2) < ptl.TIME_OUT){
               if(rep){
                 het_gio2 = false;
                 break;
               }
               vTaskDelay(50 / portTICK_PERIOD_MS);
             }
-
             if(het_gio2){
               snprintf(log, sizeof(log), "Het gio cho tn cua SLAVE 2");
               xQueueSend(queue1, &log, 0);
             }
-
             *ptr_slave_ID = 1;
         }
         vTaskDelay(5000 / portTICK_PERIOD_MS);
@@ -130,22 +137,19 @@ void poll_id(void *pvParameters) {
 }
 
 void doc_zigbee(void *pvParameters) {
-    char rcv_data[MESS_SIZE];
+    char rcv_data[ptl.MESS_SIZE];
     while (true) {
         while (zigbeeSerial.available()) {
             String rcvData = zigbeeSerial.readStringUntil('\n');
             rcvData.trim();
-
             //Data co dong dai 0 thi 
             if (rcvData.length() == 0) {
                 continue;
             }
-            
             //data nhan duoc co dang ... xem nhu da rep
             if(rcvData.startsWith("Temp_SL")){
               rep = true;
             }
-
             //Gui vao Queue
             rcvData.toCharArray(rcv_data, sizeof(rcv_data));
             xQueueSend(queue1, &rcv_data, 0);
@@ -155,32 +159,27 @@ void doc_zigbee(void *pvParameters) {
 }
 
 void in_data(void *pvParameters) {
-    char received_data[100];
+    char received_data[ptl.MESS_SIZE];
     while (true) {
         if (xQueueReceive(queue1, &received_data, 0)) {
             Serial.println(received_data);
             
             String str = String(received_data);
-            // Thử chuyển đổi chuỗi thành số
+            //Chuyen doi chu thanh so
             float waterVal = str.toFloat();
             
-            // Nếu là một số hợp lệ (không phải text thông báo)
-            if (waterVal >= 0.0) {  // Giả sử giá trị nước không âm
-                // Xóa vùng hiển thị cũ
-                tft.fillRect(30, 90, 200, 30, ILI9341_BLACK);
-                
-                // Hiển thị giá trị mới
-                tft.setCursor(30, 90);
-                tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
-                tft.setTextSize(2);
-                tft.print("Water = ");
-                tft.print(waterVal, 2);
-                tft.println("%");
+            if (waterVal >= 0.0) {  
+                tft->fillRect(30, 90, 200, 30, ILI9341_BLACK);
+                tft->setCursor(30, 90);
+                tft->setTextColor(ILI9341_WHITE, ILI9341_BLACK);
+                tft->setTextSize(2);
+                tft->print("Water = ");
+                tft->print(waterVal, 2);
+                tft->println("%");
             }
-        }
+      }
         vTaskDelay(50 / portTICK_PERIOD_MS);
-    }
+  }
 }
-
 
 void loop() {}
