@@ -7,4 +7,6 @@ Dự án sử dụng **Zigbee CC2530** để truyền dữ liệu từ **2 node 
 **Công nghệ sử dụng:**
 - **Zigbee CC2530** 
 - **ESP32** 
-- **Cloud IoT, Google Sheets API** 
+- **Cloud IoT, Google Sheets API**
+
+Dự án sử dụng mọi kiến thức vốn có để tập tổ chức mã 1 cách có hệ thống và maintainable hơn.
