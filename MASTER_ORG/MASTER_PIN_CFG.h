@@ -21,6 +21,5 @@ extern peripheral pin;
 
 void lcd_init(lcd_pin *lcd);
 void peripheral_init(peripheral *pin);
-void debugPrint();
 
 #endif 

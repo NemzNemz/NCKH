@@ -15,10 +15,3 @@ void peripheral_init(peripheral *pin){
   pin ->ZIGBEE_RX = 16;
   pin ->ZIGBEE_TX = 17;
 }
-
-void debugPrint() {
-  if (Serial) {  // Kiểm tra xem Serial đã khởi tạo chưa
-    Serial.print("lcd in MASTER_PIN_CFG.cpp: ");
-    Serial.println((uint32_t)&lcd, HEX);
-  }
-}
