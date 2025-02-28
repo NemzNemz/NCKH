@@ -61,11 +61,13 @@ void loop() {
     if(xQueueReceive(uart_queue, &event, pdMS_TO_TICKS(300))){
       if(event.type == UART_DATA){
         char rx_buf[256];
+        //delay(500);
         int len = uart_read_bytes(uart_var.uart_num, rx_buf, event.size, 0);
         //Ki tu ket thuc chuoi
         rx_buf[len] = '\0';
 
         if(strstr(rx_buf, slv.SLAVE_COMMAND) != NULL){
+          //1 Mang luu chuoi chuan bi gui
           char buffer[40];
           snprintf(buffer, sizeof(buffer), "WTR: %d\n", data.water_level);
           uart_write_bytes(uart_var.uart_num, buffer, strlen(buffer));
