@@ -5,7 +5,7 @@
 
 extern sensor data;
 
-const char* ssid = "Redmi K60";
+const char* ssid = "Been";
 const char* password = "11119999";
 String googleScriptUrl = "https://script.google.com/macros/s/AKfycbzH_dHcqu70IVUvkaOhfx5NeWxMAMupB5VZIlk7CL-ko0Q6QkMQv0Exfls3hGosaAec/exec"; // Dán URL đã sao chép ở đây
 
