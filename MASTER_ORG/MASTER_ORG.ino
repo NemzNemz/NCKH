@@ -31,7 +31,7 @@ uint16_t interval2 = 1700;
 uint8_t slave_id = 1;
 
 unsigned long prev_send_data = 0;
-uint16_t interval3 = 3000;
+uint16_t interval3 = 2000;
 bool signUP_OK = false;
 
 
@@ -50,7 +50,15 @@ int buf_index = 0;
 float lastValueSLV1 = 1.23;
 float lastValueSLV2 = 1.23;
 
+const int led = 15;
+const int button = 32;
+bool state_of_led = false;
+
 HardwareSerial zigbeeSerial(1); // ESP32: TX=17, RX=16 (Zigbee)
+
+void IRAM_ATTR ISR(){
+  state_of_led = true;
+}
 
 void in_text_ra_lcd(){
     tft.begin();
@@ -71,6 +79,11 @@ void in_text_ra_lcd(){
 
 void setup() {
     Serial.begin(115200);
+    pinMode(led, OUTPUT);
+    pinMode(button, INPUT_PULLUP);
+    attachInterrupt(button, ISR, FALLING);
+    digitalWrite(led, 0);
+
     WiFi.begin(WIFI_SSID, WIFI_PASS);
     Serial.println("Dang ket noi voi Wifi");
     while(WiFi.status() != WL_CONNECTED){
@@ -145,10 +158,10 @@ void nhan_data(){
 }
 
 void loop() {
+  poll_id();
+  nhan_data();
   unsigned long now3 = millis();
   if(now3 - prev_send_data > interval3){
-    nhan_data();
-    poll_id();
     if(Firebase.ready() && signUP_OK == true){
       float WTR_Value1 = lastValueSLV1;
       float WTR_Value2 = lastValueSLV2;
@@ -161,15 +174,23 @@ void loop() {
         Serial.println("That bai: " + fbdo.errorReason());
       }
 
-      // if(Firebase.RTDB.setFloat(&fbdo, "Sensor/WTR_data2", WTR_Value2)){
-      //   Serial.println();
-      //   Serial.println("- thanh cong luu den: " + fbdo.dataPath());
-      //   Serial.println(" (" + fbdo.dataType() + ") ");
-      // }
-      // else {
-      //   Serial.println("That bai: " + fbdo.errorReason());
-      // }
+      if(Firebase.RTDB.setFloat(&fbdo, "Sensor/WTR_data2", WTR_Value2)){
+        Serial.println();
+        Serial.println("- thanh cong luu den: " + fbdo.dataPath());
+        Serial.println(" (" + fbdo.dataType() + ") ");
+      }
+      else {
+        Serial.println("That bai: " + fbdo.errorReason());
+      }
     }
-    prev_send_data = now3;
+   prev_send_data = now3;
+  }
+  if(state_of_led == true){
+    digitalWrite(led, 1);
+    delay(1000);
+    state_of_led = false;
+  }
+  else{
+    digitalWrite(led, 0);
   }
 } 
