@@ -6,10 +6,9 @@
 
 extern unsigned long prev;
 extern uint16_t interval;
-extern uint8_t slave_id;
 extern HardwareSerial zigbeeSerial;
 
-void poll_id();
+void poll_id(uint8_t &slave_id);
 void firebase();
 
 #endif FUNCTION_H
