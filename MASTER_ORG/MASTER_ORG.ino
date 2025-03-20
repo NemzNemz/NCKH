@@ -11,8 +11,8 @@
 #include <WiFi.h>
 
 //Config Firebase
-#define WIFI_SSID "Trieu Ninh"
-#define WIFI_PASS "12344321"
+#define WIFI_SSID "Redmi K60"
+#define WIFI_PASS "11119999"
 #define API_KEY "AIzaSyCNLfTrT6w3K2ipz9DBT198YocfGbZarII"
 #define DATABASE_URL "https://nckh-dd303-default-rtdb.firebaseio.com/"
 
@@ -26,11 +26,11 @@ Adafruit_ILI9341 tft = Adafruit_ILI9341(lcd.TFT_CS, lcd.TFT_DC, lcd.TFT_MOSI, lc
 //Poll ID
 unsigned long prev = 0;
 uint16_t interval = 2000;
+static uint8_t slave_id = 1;
 
 //Nhan Data
 unsigned long prev2 = 0;
 uint16_t interval2 = 1700;
-uint8_t slave_id = 1;
 
 //Gui Data
 unsigned long prev_send_data = 0;
@@ -207,7 +207,7 @@ void loop() {
   //   }
   //   prev = now;
   // }
-  poll_id();
+  poll_id(slave_id);
   nhan_data();
   // unsigned long now3 = millis();
   // if(now3 - prev_send_data > interval3){
