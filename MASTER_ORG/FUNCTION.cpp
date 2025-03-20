@@ -1,32 +1,32 @@
-#include "FUNCTION.h"
+  #include "FUNCTION.h"
 
-void poll_id(){
-  unsigned long now = millis();
-  if(now - prev > interval){
-    if(slave_id == 1){
-      zigbeeSerial.println("SLV_01");
-      Serial.println("Gui: SLV_01");
+  void poll_id(uint8_t &slave_id){
+    unsigned long now = millis();
+    if(now - prev > interval){
+      if(slave_id == 1){
+        zigbeeSerial.println("SLV_01");
+        Serial.println("Gui: SLV_01");
 
-      if(zigbeeSerial.available()){
-        String data = zigbeeSerial.readStringUntil('\n');
-        Serial.println("Nhan: "+ data);
+        if(zigbeeSerial.available()){
+          String data = zigbeeSerial.readStringUntil('\n');
+          Serial.println("Nhan: "+ data);
+        }
+        slave_id = 2;
       }
-      slave_id = 2;
-    }
-    else if(slave_id == 2){
-      zigbeeSerial.println("SLV_02");
-      Serial.println("Gui: SLV_02");
+      else if(slave_id == 2){
+        zigbeeSerial.println("SLV_02");
+        Serial.println("Gui: SLV_02");
 
-      if(zigbeeSerial.available()){
-        String data = zigbeeSerial.readStringUntil('\n');
-        Serial.println("Nhan: "+ data);
+        if(zigbeeSerial.available()){
+          String data = zigbeeSerial.readStringUntil('\n');
+          Serial.println("Nhan: "+ data);
+        }
+        slave_id = 1;
       }
-      slave_id = 1;
+      prev = now;
     }
-    prev = now;
   }
-}
 
-void firebase(){
-  
-}
+  void firebase(){
+    
+  }
