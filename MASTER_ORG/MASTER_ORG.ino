@@ -2,12 +2,6 @@
 #include "FUNCTION.h"
 #include "Adafruit_ILI9341.h"
 #include "SPI.h"
-#include "driver/uart.h"
-#include "freertos/queue.h"
-//Firebase lib
-#include <Firebase_ESP_Client.h>
-#include "addons/TokenHelper.h"
-#include "addons/RTDBHelper.h"
 #include <WiFi.h>
 
 //Config Firebase
@@ -19,6 +13,14 @@
 FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
+bool signUpOK = false;
+
+extern const int LED_PIN = 5;
+const int BUTTON_PIN = 32; 
+int lastButtonState = HIGH; // Giả sử INPUT_PULLUP, trạng thái ban đầu là HIGH
+int ledStatus = 0;
+int oldLedStatus = -1;  // khác 0 hoặc 1
+
 
 lcd_pin lcd;
 Adafruit_ILI9341 tft = Adafruit_ILI9341(lcd.TFT_CS, lcd.TFT_DC, lcd.TFT_MOSI, lcd.TFT_SCLK, lcd.TFT_RST);
@@ -32,37 +34,16 @@ unsigned long prev2 = 0;
 uint16_t interval2 = 1700;
 
 //Gui Data
-unsigned long prev_send_data = 0;
-uint16_t interval3 = 2000;
-bool signUP_OK = false;
-
-//Cau hinh UART
-struct uart_variable{
-  //Kenh UART1
-  const uart_port_t uart_num = UART_NUM_1;
-  //Bo nho dem nhan(RX) 2KB
-  const int rx_buffer_size = 2048;
-  //Bo nho dem gui(TX) 2KB
-  const int tx_buffer_size = 1024;
-  //Hang doi 20
-  const int queue_size = 20;
-}uart_var;
-QueueHandle_t uart_queue;
+int lastValueSLV1 = 0;          
+int lastValueSLV2 = 1;          
+unsigned long prev_send_data = 0;   
+const uint16_t interval3 = 2000;    
 
 char buffer[40];
 int buf_index = 0;
-float lastValueSLV1 = 1.23;
-float lastValueSLV2 = 1.23;
 
-const int led = 15;
-const int button = 32;
 bool state_of_led = false;
-
 HardwareSerial zigbeeSerial(1); // ESP32: TX=17, RX=16 (Zigbee)
-
-void IRAM_ATTR ISR(){
-  state_of_led = true;
-}
 
 void in_text_ra_lcd(){
     tft.begin();
@@ -79,14 +60,17 @@ void in_text_ra_lcd(){
     tft.println("WTR_SLV1:");
     tft.setCursor(20, 55);
     tft.println("WTR_SLV2:");
+
+    tft.setCursor(20, 150);
+    tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
+    tft.println("LED_STATE:");
 }
 
 void setup() {
     Serial.begin(115200);
-    pinMode(led, OUTPUT);
-    pinMode(button, INPUT_PULLUP);
-    attachInterrupt(button, ISR, FALLING);
-    digitalWrite(led, 0);
+    pinMode(LED_PIN, OUTPUT);
+    pinMode(BUTTON_PIN, INPUT_PULLUP);
+    digitalWrite(LED_PIN, 0);
 
     WiFi.begin(WIFI_SSID, WIFI_PASS);
     Serial.println("Dang ket noi voi Wifi");
@@ -103,15 +87,15 @@ void setup() {
     config.database_url = DATABASE_URL;
     if(Firebase.signUp(&config, &auth, "", "")){
       Serial.println("Sign UP!");
-      signUP_OK = true;
+      signUpOK = true;
     }
     else{
       Serial.printf("%s\n", config.signer.signupError.message.c_str());
     }
-
     config.token_status_callback = tokenStatusCallback;
     Firebase.begin(&config, &auth);
     Firebase.reconnectWiFi(true);
+
     peripheral_init(&pin);
     in_text_ra_lcd();
     zigbeeSerial.begin(115200, SERIAL_8N1, pin.ZIGBEE_RX, pin.ZIGBEE_TX);
@@ -121,6 +105,10 @@ void xu_ly_data(char* data, uint8_t slave_id) {
   if (strncmp(data, "SLV1: WTR: ", 11) == 0) {
     char* valStr = data + 11;
     float value = atof(valStr);
+    lastValueSLV1 = value;
+    //Xoa vung hien thi cu, set mau xanh la
+    tft.setTextColor(ILI9341_GREEN, ILI9341_BLACK);
+    tft.fillRect(130, 35, 50, 15, ILI9341_BLACK);
     tft.setCursor(130, 35);
     //Han che x.000
     tft.print(value, 0);
@@ -128,6 +116,10 @@ void xu_ly_data(char* data, uint8_t slave_id) {
    else if (strncmp(data, "SLV2: WTR: ", 11) == 0) {
     char* valStr = data + 11;
     float value = atof(valStr);
+    lastValueSLV2 = value;
+
+    tft.setTextColor(ILI9341_GREEN, ILI9341_BLACK);
+    tft.fillRect(130, 55, 50, 15, ILI9341_BLACK);
     tft.setCursor(130, 55);
     //Han che x.000
     tft.print(value, 0);
@@ -153,41 +145,70 @@ void nhan_data(uint8_t slave_id) {
   }
 }
 
+void send_to_firebase(){
+  unsigned long now3 = millis();
+    if (now3 - prev_send_data > interval3) {
+      if (Firebase.ready() && signUpOK) {
+        float WTR_Value1 = lastValueSLV1;
+        float WTR_Value2 = lastValueSLV2;
+          if (Firebase.RTDB.setFloat(&fbdo, "Sensor/WTR_data1", WTR_Value1)) {
+            Serial.println();
+            //Serial.println("- Thành công lưu đến: " + fbdo.dataPath());
+            //Serial.println(" (" + fbdo.dataType() + ") ");
+          }
+          else{
+            Serial.println("Thất bại: " + fbdo.errorReason());
+          }
+          if(Firebase.RTDB.setFloat(&fbdo, "Sensor/WTR_data2", WTR_Value2)) {
+            Serial.println();
+            //Serial.println("- Thành công lưu đến: " + fbdo.dataPath());
+            //Serial.println(" (" + fbdo.dataType() + ") ");
+          }
+          else {
+            Serial.println("Thất bại: " + fbdo.errorReason());
+          }
+        }
+    prev_send_data = now3;
+  }
+}
+
 void loop() {
   static uint8_t slave_id = 1;
   poll_id(slave_id);
   nhan_data(slave_id);
-  // unsigned long now3 = millis();
-  // if(now3 - prev_send_data > interval3){
-  //   if(Firebase.ready() && signUP_OK == true){
-  //     float WTR_Value1 = lastValueSLV1;
-  //     float WTR_Value2 = lastValueSLV2;
-  //     if(Firebase.RTDB.setFloat(&fbdo, "Sensor/WTR_data1", WTR_Value1)){
-  //       Serial.println();
-  //       Serial.println("- thanh cong luu den: " + fbdo.dataPath());
-  //       Serial.println(" (" + fbdo.dataType() + ") ");
-  //     }
-  //     else {
-  //       Serial.println("That bai: " + fbdo.errorReason());
-  //     }
+  readFirebaseData();
+  send_to_firebase();
 
-  //     if(Firebase.RTDB.setFloat(&fbdo, "Sensor/WTR_data2", WTR_Value2)){
-  //       Serial.println();
-  //       Serial.println("- thanh cong luu den: " + fbdo.dataPath());
-  //       Serial.println(" (" + fbdo.dataType() + ") ");
-  //     }
-  //     else {
-  //       Serial.println("That bai: " + fbdo.errorReason());
-  //     }
-  //   }
-  //  prev_send_data = now3;
-  // }
-  if(state_of_led == true){
-    digitalWrite(led, 1);
-    delay(1000);
-    state_of_led = false;
-  }
-  else{
-    digitalWrite(led, 0);
-  }
+  int buttonState = digitalRead(BUTTON_PIN);
+    if (buttonState == LOW && lastButtonState == HIGH) {
+        ledStatus = !ledStatus; 
+        digitalWrite(LED_PIN, ledStatus);
+        Serial.println(ledStatus ? "LED BẬT (Từ nút nhấn)" : "LED TẮT (Từ nút nhấn)");
+
+        // Gửi trạng thái LED lên Firebase
+        if (Firebase.ready() && signUpOK) {
+            if (Firebase.RTDB.setInt(&fbdo, "Sensor/LED", ledStatus)) {
+                Serial.println("Gửi trạng thái LED lên Firebase thành công");
+            } else {
+                Serial.println("Gửi lên Firebase thất bại: " + String(fbdo.errorReason().c_str()));
+            }
+        }
+    }
+    if (ledStatus != oldLedStatus) {
+    // Chỉ cập nhật LCD khi ledStatus đã đổi
+    tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
+    tft.fillRect(160, 150, 60, 15, ILI9341_BLACK);
+    tft.setCursor(150, 150);
+    if (ledStatus == 1) {
+      tft.print("ON");
+    } 
+    else {
+      tft.print("OFF");
+    }
+    oldLedStatus = ledStatus; 
+    }
+  lastButtonState = buttonState;
+ 
+  digitalWrite(LED_PIN, ledStatus);
+  delay(50);
 } 
