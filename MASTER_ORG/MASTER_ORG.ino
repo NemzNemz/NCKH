@@ -17,10 +17,12 @@ bool signUpOK = false;
 
 extern const int LED_PIN = 5;
 const int BUTTON_PIN = 32; 
-int lastButtonState = HIGH; // Giả sử INPUT_PULLUP, trạng thái ban đầu là HIGH
-int ledStatus = 0;
-int oldLedStatus = -1;  // khác 0 hoặc 1
+bool lastButtonState = HIGH; 
 
+//Cac bien trang thai
+int ledStatus = 0;
+int oldLedStatus = -1;  
+int old_firebase_status = -1;
 
 lcd_pin lcd;
 Adafruit_ILI9341 tft = Adafruit_ILI9341(lcd.TFT_CS, lcd.TFT_DC, lcd.TFT_MOSI, lcd.TFT_SCLK, lcd.TFT_RST);
@@ -126,6 +128,16 @@ void xu_ly_data(char* data, uint8_t slave_id) {
   }
 }
 
+void check_button(){
+  bool cur_state = digitalRead(BUTTON_PIN);
+  if(cur_state == LOW && lastButtonState == HIGH){
+    ledStatus = !ledStatus; 
+    digitalWrite(LED_PIN, ledStatus);
+    Serial.println("Da an nut!");
+  }
+  lastButtonState = cur_state;
+}
+
 void nhan_data(uint8_t slave_id) {
   if (zigbeeSerial.available()) {
     char c = zigbeeSerial.read();
@@ -178,36 +190,34 @@ void loop() {
   nhan_data(slave_id);
   readFirebaseData();
   send_to_firebase();
+  check_button();
 
-  int buttonState = digitalRead(BUTTON_PIN);
-    if (buttonState == LOW && lastButtonState == HIGH) {
-        ledStatus = !ledStatus; 
-        digitalWrite(LED_PIN, ledStatus);
-        Serial.println(ledStatus ? "LED BẬT (Từ nút nhấn)" : "LED TẮT (Từ nút nhấn)");
+  //Chi cap nhat Firebase khi co thay doi de do lagg
+  if(ledStatus != old_firebase_status){
+    if (Firebase.ready() && signUpOK) {
+      if (Firebase.RTDB.setInt(&fbdo, "Sensor/LED", ledStatus)) {
+        Serial.println("Gui trang thai len Firebase thanh cong");
+        old_firebase_status = ledStatus;
+        } 
+        else {
+          Serial.println("Gui firebase that bai: " + String(fbdo.errorReason().c_str()));
+      }
+    }
+  }
 
-        // Gửi trạng thái LED lên Firebase
-        if (Firebase.ready() && signUpOK) {
-            if (Firebase.RTDB.setInt(&fbdo, "Sensor/LED", ledStatus)) {
-                Serial.println("Gửi trạng thái LED lên Firebase thành công");
-            } else {
-                Serial.println("Gửi lên Firebase thất bại: " + String(fbdo.errorReason().c_str()));
-            }
-        }
-    }
-    if (ledStatus != oldLedStatus) {
-    // Chỉ cập nhật LCD khi ledStatus đã đổi
-    tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
-    tft.fillRect(160, 150, 60, 15, ILI9341_BLACK);
-    tft.setCursor(150, 150);
-    if (ledStatus == 1) {
-      tft.print("ON");
-    } 
-    else {
-      tft.print("OFF");
-    }
+  if (ledStatus != oldLedStatus) {
+  //Chi cap nhat LCD khi co thay doi de do lagg
+  tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
+  tft.fillRect(160, 150, 60, 15, ILI9341_BLACK);
+  tft.setCursor(150, 150);
+  if (ledStatus == 1) {
+    tft.print("ON");
+  } 
+  else {
+    tft.print("OFF");
+  }
     oldLedStatus = ledStatus; 
-    }
-  lastButtonState = buttonState;
+  }
  
   digitalWrite(LED_PIN, ledStatus);
   delay(50);
