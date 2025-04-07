@@ -9,17 +9,14 @@ typedef struct lcd_pins{
   uint8_t TFT_SCLK = 12;
   uint8_t TFT_RST = 13;
 } lcd_pin;
-
 extern lcd_pin lcd;
 
 typedef struct peripheral__pin{
   uint8_t ZIGBEE_RX;
   uint8_t ZIGBEE_TX;
 } peripheral;
-
 extern peripheral pin;
 
-// void lcd_init(lcd_pin *lcd);
 void peripheral_init(peripheral *pin);
 
 #endif 
