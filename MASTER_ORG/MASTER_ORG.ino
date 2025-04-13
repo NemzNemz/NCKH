@@ -29,7 +29,7 @@ Adafruit_ILI9341 tft = Adafruit_ILI9341(lcd.TFT_CS, lcd.TFT_DC, lcd.TFT_MOSI, lc
 
 //Poll ID
 unsigned long prev = 0;
-uint16_t interval = 2000;
+uint16_t interval = 5000;
 
 //Nhan Data
 unsigned long prev2 = 0;
@@ -39,7 +39,7 @@ uint16_t interval2 = 1700;
 int lastValueSLV1 = 0;          
 int lastValueSLV2 = 1;          
 unsigned long prev_send_data = 0;   
-const uint16_t interval3 = 2000;    
+const uint16_t interval3 = 5000;    
 
 char buffer[40];
 int buf_index = 0;
@@ -49,19 +49,28 @@ HardwareSerial zigbeeSerial(1); // ESP32: TX=17, RX=16 (Zigbee)
 
 void in_text_ra_lcd(){
     tft.begin();
-    tft.setRotation(2);
+    tft.setRotation(1);
     tft.fillScreen(ILI9341_BLACK);
     tft.setTextColor(ILI9341_BLUE, ILI9341_BLACK);
     tft.setTextSize(2);
 
-    tft.setCursor(20, 10);
+    tft.setCursor(100, 10);
     tft.println("HELLO NCKH");
 
-    tft.setCursor(20, 35);
     tft.setTextColor(ILI9341_GREEN, ILI9341_BLACK);
-    tft.println("WTR_SLV1:");
-    tft.setCursor(20, 55);
-    tft.println("WTR_SLV2:");
+    tft.setCursor(20, 40);
+    tft.println("SLV1_DATA");
+    tft.setCursor(20, 70);
+    tft.println("P.H:");
+    tft.setCursor(20, 100);
+    tft.println("WTR:");
+    
+    tft.setCursor(200, 40);
+    tft.println("SLV2_DATA");
+    tft.setCursor(200, 70);
+    tft.println("P.H:");
+    tft.setCursor(200, 100);
+    tft.println("WTR:");
 
     tft.setCursor(20, 150);
     tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
@@ -104,27 +113,41 @@ void setup() {
 }
 
 void xu_ly_data(char* data, uint8_t slave_id) {
-  if (strncmp(data, "SLV1: WTR: ", 11) == 0) {
+  if (strncmp(data, "SLV1: P.H: ", 11) == 0) {
     char* valStr = data + 11;
     float value = atof(valStr);
     lastValueSLV1 = value;
     //Xoa vung hien thi cu, set mau xanh la
     tft.setTextColor(ILI9341_GREEN, ILI9341_BLACK);
-    tft.fillRect(130, 35, 50, 15, ILI9341_BLACK);
-    tft.setCursor(130, 35);
+    tft.fillRect(80, 70, 60, 15, ILI9341_RED);
+    delay(1000);
+    tft.setCursor(80, 70);
     //Han che x.000
-    tft.print(value, 0);
-    }
-   else if (strncmp(data, "SLV2: WTR: ", 11) == 0) {
+    tft.print(value, 1);
+  }
+
+  else if (strncmp(data, "SLV2: WTR: ", 11) == 0) {
     char* valStr = data + 11;
     float value = atof(valStr);
     lastValueSLV2 = value;
 
     tft.setTextColor(ILI9341_GREEN, ILI9341_BLACK);
-    tft.fillRect(130, 55, 50, 15, ILI9341_BLACK);
-    tft.setCursor(130, 55);
+    tft.fillRect(260, 70, 60, 15, ILI9341_RED);
+    tft.setCursor(260, 70);
     //Han che x.000
-    tft.print(value, 0);
+    tft.print(value, 1);
+  }
+
+  else if(strncmp(data, "SLV1: WTR: ", 11) == 0){
+    char* valStr = data + 11;
+    float value = atof(valStr);
+
+    tft.setTextColor(ILI9341_GREEN, ILI9341_BLACK);
+    tft.fillRect(80, 100, 60, 15, ILI9341_RED);
+    delay(1000);
+    tft.setCursor(80, 100);
+    //Han che x.000
+    tft.print(value, 1);
   }
 }
 
@@ -143,6 +166,10 @@ void nhan_data(uint8_t slave_id) {
     char c = zigbeeSerial.read();
     if (c == '\n') {
       buffer[buf_index] = '\0';
+      
+      Serial.print("Chuoi nhan duoc: ");
+      Serial.println(buffer);
+
       unsigned long now2 = millis();
       if (now2 - prev2 > interval2) {
         xu_ly_data(buffer, slave_id);
@@ -188,8 +215,8 @@ void loop() {
   static uint8_t slave_id = 1;
   poll_id(slave_id);
   nhan_data(slave_id);
-  readFirebaseData();
-  send_to_firebase();
+  //readFirebaseData();
+  //send_to_firebase();
   check_button();
 
   //Chi cap nhat Firebase khi co thay doi de do lagg
