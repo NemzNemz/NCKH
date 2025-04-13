@@ -5,8 +5,6 @@
   #include "driver/uart.h"
   #include "freertos/queue.h"
 
-  #define TCRT5000_PIN 34
-
   unsigned long prev_main = 0;
   uint16_t interval_main = 2000;
 
@@ -54,11 +52,20 @@
 
     pinMode(pin.VCC_WTR, OUTPUT);
     pinMode(pin.WTR_PIN, INPUT);
+    pinMode(pin.P0_PIN, INPUT);
     //Do phan giai Analog 12bit de su dung TCRT tam thoi
     analogReadResolution(12);
   }
 
-  void loop() {
+void loop() {
+  // raw_wtr(&data);
+  // Serial.println("Raw WTR: " + String(data.raw_value_wtr));
+  // water_lv(&data);
+  // Serial.println("Water Level: " + String(data.water_level));
+  // cal_ph(pin.P0_PIN, &data);
+  // Serial.println(data.ph_value);
+  // delay(2000);
+
     uart_event_t event;
     //Neu co su kien (wait max 300ms)
     if(xQueueReceive(uart_queue, &event, pdMS_TO_TICKS(500))){
@@ -75,22 +82,26 @@
         
         //Neu data nhan la SLAVE_COMMAND(SLAVE_1)
         if(strstr(rx_buf, slv.SLAVE_COMMAND) != NULL){
-          int tcrtValue = analogRead(TCRT5000_PIN);
-          char tcrt_buf[40];
+          raw_wtr(&data);
+          water_lv(&data);
+          cal_ph(pin.P0_PIN, &data);
+          char res_buf[120];
           //Luu buffer bang snprintf voi sizeof (data cuar tcrt_buf)
-          snprintf(tcrt_buf, sizeof(tcrt_buf), "WTR: %d\n", tcrtValue);
+          snprintf(res_buf, sizeof(res_buf), "SLV1: WTR: %.1f\nSLV1: P.H: %.1f\n", data.water_level, data.ph_value);
           //Gui qua master bang uart_write_bytes
-          uart_write_bytes(uart_var.uart_num, tcrt_buf, strlen(tcrt_buf));
-          Serial.println("Gui: " + String(tcrt_buf));
+          uart_write_bytes(uart_var.uart_num, res_buf, strlen(res_buf));
+          Serial.println(String(res_buf));
         }
       }
     } else {
       Serial.println("No data yet");
     }
-    // unsigned long now_main = millis();
-    // if(now_main - prev_main >= interval_main){
-    //   raw_wtr(&data);
-    //   water_lv(&data);
-    //   prev_main = now_main;
-    // }
+    // // unsigned long now_main = millis();
+    // // if(now_main - prev_main >= interval_main){
+    // //   raw_wtr(&data);
+    // //   water_lv(&data);
+    // //   cal_ph(pin.P0_PIN, &data);
+    // //   Serial.println(data.ph_value);
+    // //   prev_main = now_main;
+    // // }
   }
