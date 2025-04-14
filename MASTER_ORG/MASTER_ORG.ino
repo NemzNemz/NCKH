@@ -3,6 +3,7 @@
 #include "Adafruit_ILI9341.h"
 #include "SPI.h"
 #include <WiFi.h>
+#include <ESP32Servo.h>
 
 //Config Firebase
 #define WIFI_SSID "Been"
@@ -10,20 +11,32 @@
 #define API_KEY "AIzaSyCNLfTrT6w3K2ipz9DBT198YocfGbZarII"
 #define DATABASE_URL "https://nckh-dd303-default-rtdb.firebaseio.com/"
 
+//Noi luu gio, phut chay daily_task
+const int taskHour = 13;    
+const int taskMinute = 39;    
+const char* timezone = "ICT-7"; //Time zone VN
+
+//Bien sync NTP
+unsigned long lastNTPUpdate = 0;
+const unsigned long ntpSyncInterval = 30 * 60 * 1000; //30 phut 1 lan
+
+//Cac bien danh cho Firebase
 FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
 bool signUpOK = false;
 
-extern const int LED_PIN = 5;
-const int BUTTON_PIN = 32; 
-bool lastButtonState = HIGH; 
-
 //Cac bien trang thai
 int ledStatus = 0;
 int oldLedStatus = -1;  
 int old_firebase_status = -1;
+int last_run_day = -1;
 
+//Bien kiem soat data
+int lastValueSLV1 = 0;          
+int lastValueSLV2 = 1; 
+
+//Khoi tao LCD
 lcd_pin lcd;
 Adafruit_ILI9341 tft = Adafruit_ILI9341(lcd.TFT_CS, lcd.TFT_DC, lcd.TFT_MOSI, lcd.TFT_SCLK, lcd.TFT_RST);
 
@@ -35,16 +48,16 @@ uint16_t interval = 5000;
 unsigned long prev2 = 0;
 uint16_t interval2 = 1700;
 
-//Gui Data
-int lastValueSLV1 = 0;          
-int lastValueSLV2 = 1;          
+//Gui Data         
 unsigned long prev_send_data = 0;   
 const uint16_t interval3 = 5000;    
 
 char buffer[40];
 int buf_index = 0;
 
+//Bien trang thai
 bool state_of_led = false;
+bool lastButtonState = HIGH; 
 HardwareSerial zigbeeSerial(1); // ESP32: TX=17, RX=16 (Zigbee)
 
 void in_text_ra_lcd(){
@@ -77,11 +90,31 @@ void in_text_ra_lcd(){
     tft.println("LED_STATE:");
 }
 
+void sync_time() {
+  Serial.print("Dang dong bo thoi gian NTP...");
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+
+  time_t now = time(nullptr);
+  //Doi den khi co thoi gian hop le
+  while (now < 24 * 3600) 
+  {
+    delay(100);
+    now = time(nullptr);
+  }
+  Serial.println("Done!");
+
+  setenv("TZ", timezone, 1);
+  tzset();
+
+  lastNTPUpdate = millis(); 
+}
+
 void setup() {
     Serial.begin(115200);
-    pinMode(LED_PIN, OUTPUT);
-    pinMode(BUTTON_PIN, INPUT_PULLUP);
-    digitalWrite(LED_PIN, 0);
+    peripheral_init(&pin);
+    pinMode(pin.LED_PIN, OUTPUT);
+    pinMode(pin.BUTTON_PIN, INPUT_PULLUP);
+    digitalWrite(pin.LED_PIN, 0);
 
     WiFi.begin(WIFI_SSID, WIFI_PASS);
     Serial.println("Dang ket noi voi Wifi");
@@ -107,7 +140,6 @@ void setup() {
     Firebase.begin(&config, &auth);
     Firebase.reconnectWiFi(true);
 
-    peripheral_init(&pin);
     in_text_ra_lcd();
     zigbeeSerial.begin(115200, SERIAL_8N1, pin.ZIGBEE_RX, pin.ZIGBEE_TX);
 }
@@ -152,10 +184,10 @@ void xu_ly_data(char* data, uint8_t slave_id) {
 }
 
 void check_button(){
-  bool cur_state = digitalRead(BUTTON_PIN);
+  bool cur_state = digitalRead(pin.BUTTON_PIN);
   if(cur_state == LOW && lastButtonState == HIGH){
     ledStatus = !ledStatus; 
-    digitalWrite(LED_PIN, ledStatus);
+    digitalWrite(pin.LED_PIN, ledStatus);
     Serial.println("Da an nut!");
   }
   lastButtonState = cur_state;
@@ -246,6 +278,6 @@ void loop() {
     oldLedStatus = ledStatus; 
   }
  
-  digitalWrite(LED_PIN, ledStatus);
+  digitalWrite(pin.LED_PIN, ledStatus);
   delay(50);
 } 
