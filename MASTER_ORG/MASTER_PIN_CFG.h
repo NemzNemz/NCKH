@@ -14,6 +14,8 @@ extern lcd_pin lcd;
 typedef struct peripheral__pin{
   uint8_t ZIGBEE_RX;
   uint8_t ZIGBEE_TX;
+  uint8_t LED_PIN;
+  uint8_t BUTTON_PIN;
 } peripheral;
 extern peripheral pin;
 
