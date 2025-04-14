@@ -3,7 +3,6 @@
 #include "Adafruit_ILI9341.h"
 #include "SPI.h"
 #include <WiFi.h>
-#include <ESP32Servo.h>
 
 //Config Firebase
 #define WIFI_SSID "Been"
@@ -27,7 +26,7 @@ FirebaseConfig config;
 bool signUpOK = false;
 
 //Cac bien trang thai
-int ledStatus = 0;
+volatile int ledStatus = 0;
 int oldLedStatus = -1;  
 int old_firebase_status = -1;
 int last_run_day = -1;
@@ -45,20 +44,36 @@ unsigned long prev = 0;
 uint16_t interval = 5000;
 
 //Nhan Data
-unsigned long prev2 = 0;
-uint16_t interval2 = 1700;
+unsigned long prev_receive = 0;
+uint16_t interval_receive = 1700;
 
 //Gui Data         
 unsigned long prev_send_data = 0;   
-const uint16_t interval3 = 5000;    
+const uint16_t interval_send_data = 5000;    
+
+//Debounce nut nhan
+volatile unsigned long prev_debounce = 0;
+const uint8_t interval_debounce = 130;
 
 char buffer[40];
 int buf_index = 0;
 
-//Bien trang thai
-bool state_of_led = false;
-bool lastButtonState = HIGH; 
+//Chong xung dot
+portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 HardwareSerial zigbeeSerial(1); // ESP32: TX=17, RX=16 (Zigbee)
+
+void IRAM_ATTR nhan_nut(){
+  unsigned long now_debounce = millis();
+  portENTER_CRITICAL_ISR(&mux);
+
+  if(now_debounce - prev_debounce > interval_debounce){
+    Serial.println("Da an nut!");
+    ledStatus = !ledStatus;
+    digitalWrite(pin.LED_PIN, ledStatus);
+    prev_debounce = now_debounce;
+  }
+  portEXIT_CRITICAL_ISR(&mux);
+}
 
 void in_text_ra_lcd(){
     tft.begin();
@@ -109,11 +124,15 @@ void sync_time() {
   lastNTPUpdate = millis(); 
 }
 
+void daily_task_morning();
+void daily_task_night();
+
 void setup() {
     Serial.begin(115200);
     peripheral_init(&pin);
     pinMode(pin.LED_PIN, OUTPUT);
     pinMode(pin.BUTTON_PIN, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(pin.BUTTON_PIN), nhan_nut, FALLING);
     digitalWrite(pin.LED_PIN, 0);
 
     WiFi.begin(WIFI_SSID, WIFI_PASS);
@@ -125,6 +144,8 @@ void setup() {
     Serial.println("DA KET NOI");
     Serial.println(WiFi.localIP());
     Serial.println();
+    //Lay thoi gian
+    sync_time();
 
     //Ket noi Firebase
     config.api_key = API_KEY;
@@ -183,16 +204,6 @@ void xu_ly_data(char* data, uint8_t slave_id) {
   }
 }
 
-void check_button(){
-  bool cur_state = digitalRead(pin.BUTTON_PIN);
-  if(cur_state == LOW && lastButtonState == HIGH){
-    ledStatus = !ledStatus; 
-    digitalWrite(pin.LED_PIN, ledStatus);
-    Serial.println("Da an nut!");
-  }
-  lastButtonState = cur_state;
-}
-
 void nhan_data(uint8_t slave_id) {
   if (zigbeeSerial.available()) {
     char c = zigbeeSerial.read();
@@ -202,10 +213,10 @@ void nhan_data(uint8_t slave_id) {
       Serial.print("Chuoi nhan duoc: ");
       Serial.println(buffer);
 
-      unsigned long now2 = millis();
-      if (now2 - prev2 > interval2) {
+      unsigned long now_receive = millis();
+      if (now_receive - prev_receive > interval_receive) {
         xu_ly_data(buffer, slave_id);
-        prev2 = now2;
+        prev_receive = now_receive;
       }
       buf_index = 0;
     } else {
@@ -216,9 +227,9 @@ void nhan_data(uint8_t slave_id) {
   }
 }
 
-void send_to_firebase(){
-  unsigned long now3 = millis();
-    if (now3 - prev_send_data > interval3) {
+void send_value_to_firebase(){
+  unsigned long now_send_data = millis();
+    if (now_send_data - prev_send_data > interval_send_data) {
       if (Firebase.ready() && signUpOK) {
         float WTR_Value1 = lastValueSLV1;
         float WTR_Value2 = lastValueSLV2;
@@ -239,29 +250,32 @@ void send_to_firebase(){
             Serial.println("Thất bại: " + fbdo.errorReason());
           }
         }
-    prev_send_data = now3;
+    prev_send_data = now_send_data;
+  }
+}
+
+void send_state_to_firebase(){
+  if (Firebase.ready() && signUpOK) {
+    if (Firebase.RTDB.setInt(&fbdo, "Sensor/LED", ledStatus)) {
+      Serial.println("Gui trang thai len Firebase thanh cong");
+      old_firebase_status = ledStatus;
+      } 
+    else {
+      Serial.println("Gui firebase that bai: " + String(fbdo.errorReason().c_str()));
+    }
   }
 }
 
 void loop() {
   static uint8_t slave_id = 1;
   poll_id(slave_id);
-  nhan_data(slave_id);
+  //nhan_data(slave_id);
   //readFirebaseData();
-  //send_to_firebase();
-  check_button();
+  //send_value_to_firebase();
 
   //Chi cap nhat Firebase khi co thay doi de do lagg
   if(ledStatus != old_firebase_status){
-    if (Firebase.ready() && signUpOK) {
-      if (Firebase.RTDB.setInt(&fbdo, "Sensor/LED", ledStatus)) {
-        Serial.println("Gui trang thai len Firebase thanh cong");
-        old_firebase_status = ledStatus;
-        } 
-        else {
-          Serial.println("Gui firebase that bai: " + String(fbdo.errorReason().c_str()));
-      }
-    }
+    send_state_to_firebase();
   }
 
   if (ledStatus != oldLedStatus) {
