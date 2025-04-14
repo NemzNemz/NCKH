@@ -4,9 +4,11 @@
 #include <Arduino.h>
 #include <HardwareSerial.h>
 #include <Firebase_ESP_Client.h>
+#include "MASTER_PIN_CFG.h"
 
 extern unsigned long prev;
 extern uint16_t interval;
+extern peripheral pin;
 
 void poll_id(uint8_t &slave_id);
 void tokenStatusCallback(token_info_t info);
