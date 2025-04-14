@@ -11,9 +11,15 @@
 #define DATABASE_URL "https://nckh-dd303-default-rtdb.firebaseio.com/"
 
 //Noi luu gio, phut chay daily_task
-const int taskHour = 13;    
-const int taskMinute = 39;    
+int taskHour_on = 0;    
+int taskMinute_on = 30;    
+int taskHour_off = 21;    
+int taskMinute_off = 31;  
 const char* timezone = "ICT-7"; //Time zone VN
+
+//Bien toan cuc chay Daily task
+time_t now;
+struct tm timeinfo;
 
 //Bien sync NTP
 unsigned long lastNTPUpdate = 0;
@@ -29,11 +35,14 @@ bool signUpOK = false;
 volatile int ledStatus = 0;
 int oldLedStatus = -1;  
 int old_firebase_status = -1;
-int last_run_day = -1;
+int last_run_day_on = -1;
+int last_run_day_off = -1;
 
 //Bien kiem soat data
-int lastValueSLV1 = 0;          
-int lastValueSLV2 = 1; 
+float last_WTR_SLV1 = 0.0;          
+float last_WTR_SLV2 = 0.0; 
+float last_PH_SLV1 = 0.0;
+float last_PH_SLV2 = 0.0;
 
 //Khoi tao LCD
 lcd_pin lcd;
@@ -67,7 +76,7 @@ void IRAM_ATTR nhan_nut(){
   portENTER_CRITICAL_ISR(&mux);
 
   if(now_debounce - prev_debounce > interval_debounce){
-    Serial.println("Da an nut!");
+    //Serial.println("Da an nut!");
     ledStatus = !ledStatus;
     digitalWrite(pin.LED_PIN, ledStatus);
     prev_debounce = now_debounce;
@@ -124,8 +133,15 @@ void sync_time() {
   lastNTPUpdate = millis(); 
 }
 
-void daily_task_morning();
-void daily_task_night();
+void daily_task_test_on(){
+  ledStatus = 1;
+  digitalWrite(pin.LED_PIN, ledStatus);
+}
+
+void daily_task_test_off(){
+  ledStatus = 0;
+  digitalWrite(pin.LED_PIN, ledStatus);
+}
 
 void setup() {
     Serial.begin(115200);
@@ -160,6 +176,8 @@ void setup() {
     config.token_status_callback = tokenStatusCallback;
     Firebase.begin(&config, &auth);
     Firebase.reconnectWiFi(true);
+    //Doc cau hinh thoi gian
+    readDailyTaskSchedule();  
 
     in_text_ra_lcd();
     zigbeeSerial.begin(115200, SERIAL_8N1, pin.ZIGBEE_RX, pin.ZIGBEE_TX);
@@ -169,11 +187,11 @@ void xu_ly_data(char* data, uint8_t slave_id) {
   if (strncmp(data, "SLV1: P.H: ", 11) == 0) {
     char* valStr = data + 11;
     float value = atof(valStr);
-    lastValueSLV1 = value;
+    last_PH_SLV1 = value;
     //Xoa vung hien thi cu, set mau xanh la
     tft.setTextColor(ILI9341_GREEN, ILI9341_BLACK);
     tft.fillRect(80, 70, 60, 15, ILI9341_RED);
-    delay(1000);
+    //delay(1000);
     tft.setCursor(80, 70);
     //Han che x.000
     tft.print(value, 1);
@@ -182,7 +200,7 @@ void xu_ly_data(char* data, uint8_t slave_id) {
   else if (strncmp(data, "SLV2: WTR: ", 11) == 0) {
     char* valStr = data + 11;
     float value = atof(valStr);
-    lastValueSLV2 = value;
+    last_WTR_SLV2 = value;
 
     tft.setTextColor(ILI9341_GREEN, ILI9341_BLACK);
     tft.fillRect(260, 70, 60, 15, ILI9341_RED);
@@ -194,10 +212,11 @@ void xu_ly_data(char* data, uint8_t slave_id) {
   else if(strncmp(data, "SLV1: WTR: ", 11) == 0){
     char* valStr = data + 11;
     float value = atof(valStr);
+    last_WTR_SLV1 = value;
 
     tft.setTextColor(ILI9341_GREEN, ILI9341_BLACK);
     tft.fillRect(80, 100, 60, 15, ILI9341_RED);
-    delay(1000);
+    //delay(1000);
     tft.setCursor(80, 100);
     //Han che x.000
     tft.print(value, 1);
@@ -210,8 +229,8 @@ void nhan_data(uint8_t slave_id) {
     if (c == '\n') {
       buffer[buf_index] = '\0';
       
-      Serial.print("Chuoi nhan duoc: ");
-      Serial.println(buffer);
+      // Serial.print("Chuoi nhan duoc: ");
+      // Serial.println(buffer);
 
       unsigned long now_receive = millis();
       if (now_receive - prev_receive > interval_receive) {
@@ -231,18 +250,30 @@ void send_value_to_firebase(){
   unsigned long now_send_data = millis();
     if (now_send_data - prev_send_data > interval_send_data) {
       if (Firebase.ready() && signUpOK) {
-        float WTR_Value1 = lastValueSLV1;
-        float WTR_Value2 = lastValueSLV2;
-          if (Firebase.RTDB.setFloat(&fbdo, "Sensor/WTR_data1", WTR_Value1)) {
-            Serial.println();
+        float WTR_1 = last_WTR_SLV1;
+        float WTR_2 = last_WTR_SLV2;
+        float PH_1 = last_PH_SLV1;
+          //Gui WTR_SLV1
+          if (Firebase.RTDB.setFloat(&fbdo, "Sensor/WTR_data1", WTR_1)) {
+            //Serial.println();
             //Serial.println("- Thành công lưu đến: " + fbdo.dataPath());
             //Serial.println(" (" + fbdo.dataType() + ") ");
           }
           else{
             Serial.println("Thất bại: " + fbdo.errorReason());
           }
-          if(Firebase.RTDB.setFloat(&fbdo, "Sensor/WTR_data2", WTR_Value2)) {
-            Serial.println();
+          //Gui WTR_SLV2
+          if(Firebase.RTDB.setFloat(&fbdo, "Sensor/WTR_data2", WTR_2)) {
+            //Serial.println();
+            //Serial.println("- Thành công lưu đến: " + fbdo.dataPath());
+            //Serial.println(" (" + fbdo.dataType() + ") ");
+          }
+          else {
+            Serial.println("Thất bại: " + fbdo.errorReason());
+          }
+          //Gui PH_SLV1
+          if(Firebase.RTDB.setFloat(&fbdo, "Sensor/PH_data1", PH_1)) {
+            //Serial.println();
             //Serial.println("- Thành công lưu đến: " + fbdo.dataPath());
             //Serial.println(" (" + fbdo.dataType() + ") ");
           }
@@ -266,32 +297,50 @@ void send_state_to_firebase(){
   }
 }
 
+void lcd_change_led_state(){
+  if (ledStatus != oldLedStatus) {
+  //Chi cap nhat LCD khi co thay doi de do lagg
+    tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
+    tft.fillRect(160, 150, 60, 15, ILI9341_BLACK);
+    tft.setCursor(150, 150);
+    if (ledStatus == 1) {
+      tft.print("ON");
+    } 
+    else {
+      tft.print("OFF");
+    }
+      oldLedStatus = ledStatus; 
+  }
+}
+
 void loop() {
   static uint8_t slave_id = 1;
-  poll_id(slave_id);
-  //nhan_data(slave_id);
-  //readFirebaseData();
-  //send_value_to_firebase();
+  // poll_id(slave_id);
+  // nhan_data(slave_id);
+  // readFirebaseData();
+  // send_value_to_firebase();
 
   //Chi cap nhat Firebase khi co thay doi de do lagg
   if(ledStatus != old_firebase_status){
     send_state_to_firebase();
+    lcd_change_led_state();
   }
+  delay(3000);
+  readDailyTaskSchedule();
+  // Serial.printf("Giờ hiện tại: %02d:%02d:%02d - Ngày: %04d-%02d-%02d\n",
+  //               timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec,
+  //               timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday);
+  now = time(nullptr);
+  localtime_r(&now, &timeinfo);
 
-  if (ledStatus != oldLedStatus) {
-  //Chi cap nhat LCD khi co thay doi de do lagg
-  tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
-  tft.fillRect(160, 150, 60, 15, ILI9341_BLACK);
-  tft.setCursor(150, 150);
-  if (ledStatus == 1) {
-    tft.print("ON");
-  } 
-  else {
-    tft.print("OFF");
+  if (timeinfo.tm_hour == taskHour_on && timeinfo.tm_min == taskMinute_on && last_run_day_on != timeinfo.tm_mday) {
+    daily_task_test_on();  
+    //Dam bao chi chay 1 lan trong ngay
+    last_run_day_on = timeinfo.tm_mday;  
   }
-    oldLedStatus = ledStatus; 
+  if (timeinfo.tm_hour == taskHour_off && timeinfo.tm_min == taskMinute_off && last_run_day_off != timeinfo.tm_mday) {
+    daily_task_test_off();
+    //Dam bao chi chay 1 lan trong ngay  
+    last_run_day_off = timeinfo.tm_mday;  
   }
- 
-  digitalWrite(pin.LED_PIN, ledStatus);
-  delay(50);
 } 
