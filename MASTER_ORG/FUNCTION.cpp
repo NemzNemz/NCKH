@@ -4,7 +4,6 @@ extern HardwareSerial zigbeeSerial;
 extern FirebaseData fbdo;
 extern bool signUpOK;
 extern int ledStatus;
-extern const int LED_PIN;
 
 void tokenStatusCallback(token_info_t info) {
     if (info.status == token_status_error) {
@@ -17,8 +16,7 @@ void readFirebaseData() {
     if (Firebase.ready() && signUpOK) {
         if (Firebase.RTDB.getInt(&fbdo, "Sensor/LED")) {
             ledStatus = atoi(fbdo.stringData().c_str());
-            digitalWrite(LED_PIN, ledStatus);
-            //Serial.println(ledStatus ? "LED BẬT!" : "LED TẮT!");
+            digitalWrite(pin.LED_PIN, ledStatus);
         } else {
             String errorReason = String(fbdo.errorReason().c_str());
             Serial.println("Lỗi đọc từ Firebase: " + errorReason);
