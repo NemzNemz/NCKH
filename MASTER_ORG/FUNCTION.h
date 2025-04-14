@@ -13,5 +13,6 @@ extern peripheral pin;
 void poll_id(uint8_t &slave_id);
 void tokenStatusCallback(token_info_t info);
 void readFirebaseData();
+void readDailyTaskSchedule();
 
 #endif FUNCTION_H
