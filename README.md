@@ -10,4 +10,4 @@ Dự án sử dụng **Zigbee CC2530** để truyền dữ liệu từ **2 node 
 - **ESP32** 
 - **Firebase Cloud, MIT APP INVENTOR**
 
-Dự án sử dụng mọi kiến thức vốn có để tập tổ chức mã 1 cách có hệ thống và maintainable hơn. 
+Dự án sử dụng mọi kiến thức vốn có để tập tổ chức mã 1 cách có hệ thống và maintainable hơn, dù vẫn sẽ còn nhiều sai sót
