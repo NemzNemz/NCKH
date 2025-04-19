@@ -8,6 +8,8 @@ typedef struct peripheral_pin{
   uint8_t ZIGBEE_TX;
   uint8_t VCC_WTR;
   uint8_t WTR_PIN;
+  uint8_t P0_PIN;
+  uint8_t TDS_PIN;
 } peripheral;
 
 extern peripheral pin;
