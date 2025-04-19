@@ -55,20 +55,22 @@ void readDailyTaskSchedule() {
   }
 }
 
-
-
 void poll_id(uint8_t &slave_id) {
   unsigned long now = millis();
   if(now - prev > interval) {
     if(slave_id == 1) {
-      zigbeeSerial.println("SLV_01");
+      zigbeeSerial.print("SLV_01\n");
       Serial.println("Gui: SLV_01");
       slave_id = 2;
     } else if(slave_id == 2) {
-      zigbeeSerial.println("SLV_02");
+      zigbeeSerial.print("SLV_02\n");
       Serial.println("Gui: SLV_02");
       slave_id = 1;
     }
     prev = now;
-  }
+    //Xoa toan bo data cu de tranh bi lap!
+    buf_index = 0;
+    buffer[0] = '\0';
+  } 
 }
+
