@@ -8,4 +8,5 @@ void pin_cfg_init(peripheral *pin){
   pin->VCC_WTR = 12;
   pin->WTR_PIN = 34;
   pin->P0_PIN = 35;
+  pin->TDS_PIN = 32;
 }
