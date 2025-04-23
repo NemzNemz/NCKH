@@ -1,8 +1,24 @@
 #include "Sensor_data.h"
 #include "PIN_CFG.h"
+
 sensor data;
 const uint8_t samples = 30;
-float water_temp = 25.5;
+
+OneWire* oneWire = nullptr;
+DallasTemperature* sensors = nullptr;
+
+void init_sensors() {
+  if (oneWire == nullptr) {
+    oneWire = new OneWire(pin.DS18B20_PIN);
+    sensors = new DallasTemperature(oneWire);
+    sensors->begin();
+  }
+}
+
+float water_temp(sensor *data) {
+  sensors->requestTemperatures();
+  return data->water_temp = sensors->getTempCByIndex(0);
+}
 
 float cal_ph(uint8_t pin, sensor *data){
   float adc_raw = analogRead(pin);
@@ -33,7 +49,7 @@ float tds_calculate(sensor *data, uint8_t pin){
                   - 255.86 * voltage * voltage
                   + 857.39 * voltage;
   float tds_raw = ec_value * 0.5;
-  float bu_nhiet = 1.0 + 0.02 * (water_temp - 25.0);
+  float bu_nhiet = 1.0 + 0.02 * (data->water_temp - 25.0);
   return data->real_tds_value = tds_raw/ bu_nhiet;
 }
 
