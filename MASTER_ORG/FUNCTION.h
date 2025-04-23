@@ -4,17 +4,13 @@
 #include <Arduino.h>
 #include <HardwareSerial.h>
 #include <Firebase_ESP_Client.h>
-#include "MASTER_PIN_CFG.h"
+#include "CONFIG.h"
 
-extern unsigned long prev;
-extern uint16_t interval;
-extern peripheral pin;
-extern char buffer[];
-extern int  buf_index;
-
-void poll_id(uint8_t &slave_id);
+void poll_id(uint8_t &slave_id, buffer_t &buffer);
 void tokenStatusCallback(token_info_t info);
-void readFirebaseData();
-void readDailyTaskSchedule();
+void readFirebaseData(peripheral *pin, status_var *status);
+void readDailyTaskSchedule(DAILY_TASK &daily_task);
+void send_value_to_firebase(timing_variables *timing, last_data_value *data);
+void send_state_to_firebase(status_var *status);
 
-#endif FUNCTION_H
+#endif // FUNCTION_H
