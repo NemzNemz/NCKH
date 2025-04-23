@@ -1,30 +1,23 @@
-#include "MASTER_PIN_CFG.h"
+#include "CONFIG.h"
 #include "FUNCTION.h"
 #include "Adafruit_ILI9341.h"
 #include "SPI.h"
 #include <WiFi.h>
 
 //Config Firebase
-#define WIFI_SSID "Trieu Ninh"
-#define WIFI_PASS "12344321"
+#define WIFI_SSID "Been"
+#define WIFI_PASS "11119999"
 #define API_KEY "AIzaSyCNLfTrT6w3K2ipz9DBT198YocfGbZarII"
 #define DATABASE_URL "https://nckh-dd303-default-rtdb.firebaseio.com/"
 
-bool    frameOn  = false;     // đang trong giai đoạn ghi frame
-size_t  frameIdx = 0;         // chỉ số write buffer
-char    frameBuf[64];         // lưu khung "<Sx…>\n"
-
-char buffer[40];
-int  buf_index = 0;
+bool frameOn  = false;     // đang trong giai đoạn ghi frame
+size_t frameIdx = 0;         // chỉ số write buffer
+char frameBuf[64];         // lưu khung "<Sx…>\n"
+buffer_t buffer = {{0}, 0};
 
 //Noi luu gio, phut chay daily_task
-int taskHour_on = 0;    
-int taskMinute_on = 30;    
-int taskHour_off = 21;    
-int taskMinute_off = 31;  
+DAILY_TASK daily_task = {0, 30, 21, 31};
 const char* timezone = "ICT-7"; //Time zone VN
-
-//Bien toan cuc chay Daily task
 time_t now;
 struct tm timeinfo;
 
@@ -38,60 +31,28 @@ FirebaseAuth auth;
 FirebaseConfig config;
 bool signUpOK = false;
 
-//Cac bien trang thai
-volatile int ledStatus = 0;
-int oldLedStatus = -1;  
-int old_firebase_status = -1;
-int last_run_day_on = -1;
-int last_run_day_off = -1;
-
-//Bien kiem soat data
-typedef struct last_data_value{
-  float last_WTR_SLV1;          
-  float last_WTR_SLV2; 
-  float last_PH_SLV1;
-  float last_PH_SLV2;
-  float last_TDS_SLV1;
-  float last_TDS_SLV2 ;
-}last_data;
-last_data data = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+last_data_value data = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+timing_variables timing ={0, 1000, 0, 5000, 0, 150};
+status_var status = {0, -1, -1, -1, -1};
+peripheral pin;
 
 //Khoi tao LCD
-lcd_pin lcd;
+lcd_pin lcd = {0, 2, 14, 12, 13};
 Adafruit_ILI9341 tft = Adafruit_ILI9341(lcd.TFT_CS, lcd.TFT_DC, lcd.TFT_MOSI, lcd.TFT_SCLK, lcd.TFT_RST);
-
-//Poll ID
-unsigned long prev = 0;
-uint16_t interval = 5000;
-
-typedef struct timing_variables{
-  //Gui len firebase
-  unsigned long prev_send_fb;   
-  uint16_t interval_send_fb;    
-  //Gui Data         
-  unsigned long prev_send_data;   
-  uint16_t interval_send_data;    
-  //Debounce nut nhan
-  volatile unsigned long prev_debounce;
-  uint8_t interval_debounce;
-}timing_var;
-timing_var timing ={0, 1000, 0, 5000, 0, 150};
 
 //Chong xung dot
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
-HardwareSerial zigbeeSerial(1); // ESP32: TX=17, RX=16 (Zigbee)
+HardwareSerial zigbeeSerial(1); 
 
-void IRAM_ATTR nhan_nut(){
-  unsigned long now_debounce = millis();
-  portENTER_CRITICAL_ISR(&mux);
-
-  if(now_debounce - timing.prev_debounce > timing.interval_debounce){
-    //Serial.println("Da an nut!");
-    ledStatus = !ledStatus;
-    digitalWrite(pin.LED_PIN, ledStatus);
-    timing.prev_debounce = now_debounce;
+//volatile unsigned long lastButtonPress = 0;
+volatile bool buttonPressed = false;
+void IRAM_ATTR nhan_nut() {
+  static unsigned long lastInterruptTime = 0;
+  unsigned long interruptTime = micros();
+  if (interruptTime - lastInterruptTime > 20000) { // 20ms debounce
+    buttonPressed = true;
+    lastInterruptTime = interruptTime;
   }
-  portEXIT_CRITICAL_ISR(&mux);
 }
 
 void in_text_ra_lcd(){
@@ -148,13 +109,13 @@ void sync_time() {
 }
 
 void daily_task_test_on(){
-  ledStatus = 1;
-  digitalWrite(pin.LED_PIN, ledStatus);
+  status.ledStatus = 1;
+  digitalWrite(pin.LED_PIN, status.ledStatus);
 }
 
 void daily_task_test_off(){
-  ledStatus = 0;
-  digitalWrite(pin.LED_PIN, ledStatus);
+  status.ledStatus = 0;
+  digitalWrite(pin.LED_PIN, status.ledStatus);
 }
 
 void setup() {
@@ -173,7 +134,6 @@ void setup() {
   }
   Serial.println("DA KET NOI");
   Serial.println(WiFi.localIP());
-  Serial.println();
   //Lay thoi gian
   sync_time();
 
@@ -191,7 +151,7 @@ void setup() {
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
   //Doc cau hinh thoi gian
-  //readDailyTaskSchedule();  
+  readDailyTaskSchedule(daily_task);  
 
   in_text_ra_lcd();
   zigbeeSerial.begin(115200, SERIAL_8N1, pin.ZIGBEE_RX, pin.ZIGBEE_TX);
@@ -245,188 +205,100 @@ void processSLV1Data(const char *s) {
   }
 }
 
-void nhan_data() {
+void nhan_data(buffer_t &buffer) {
   while (zigbeeSerial.available()) {
     char c = zigbeeSerial.read();
+      if (c == '\r') continue;
 
-    // Bỏ CR luôn 
-    if (c == '\r') continue;
-
-    //Nếu chưa bắt đầu frame, chỉ quan tâm đến '<' 
-    if (!frameOn) {
-      if (c == '<') {
-        frameOn = true;
-        frameIdx = 0;
-        frameBuf[frameIdx++] = c;   // ghi '<'
-      }
-      continue;  // bỏ qua mọi byte khác
-    }
-
-    //Đang trong frame: ghi tiếp nếu đủ chỗ
-    if (frameIdx < sizeof(frameBuf) - 1) {
-      frameBuf[frameIdx++] = c;
-    } 
-    else {
-    //overflow: hủy khung
-      frameOn  = false;
-      frameIdx = 0;
-      continue;
-    }
-
-    // Khi gặp newline, kết thúc frame
-    if(c == '\n') {
-      frameBuf[frameIdx] = '\0';   // đóng chuỗi
-      Serial.print("Chuoi nhan duoc: ");
-      Serial.println(frameBuf);
-
-    // GỌI HÀM XỬ LÝ
-    if(strncmp(frameBuf, "<S1,", 4) == 0) processSLV1Data(frameBuf);
-    else if(strncmp(frameBuf, "<S2,", 4) == 0) processSLV2Data(frameBuf);
-    else Serial.println("Khong nhan dien duoc slave_id");
-
-    // Reset để đón frame kế
-    frameOn  = false;
-    frameIdx = 0;
-    }
-  }
-}
-
-void send_value_to_firebase(){
-  unsigned long now_send_data = millis();
-    if (now_send_data - timing.prev_send_data > timing.interval_send_data) {
-      if (Firebase.ready() && signUpOK) {
-        float WTR_1 = data.last_WTR_SLV1;
-        float WTR_2 = data.last_WTR_SLV2;
-        float PH_1 = data.last_PH_SLV1;
-        float PH_2 = data.last_PH_SLV2;
-        float TDS_1 = data.last_TDS_SLV1;
-        float TDS_2 = data.last_TDS_SLV2;
-          //Gui WTR_SLV1
-          if (Firebase.RTDB.setFloat(&fbdo, "Sensor/WTR_data1", WTR_1)) {
-            //Serial.println();
-            //Serial.println("- Thành công lưu đến: " + fbdo.dataPath());
-            //Serial.println(" (" + fbdo.dataType() + ") ");
-          }
-          else{
-            Serial.println("Thất bại: " + fbdo.errorReason());
-          }
-
-          //Gui PH_SLV1
-          if(Firebase.RTDB.setFloat(&fbdo, "Sensor/PH_data1", PH_1)) {
-            //Serial.println();
-            //Serial.println("- Thành công lưu đến: " + fbdo.dataPath());
-            //Serial.println(" (" + fbdo.dataType() + ") ");
-          }
-          else {
-            Serial.println("Thất bại: " + fbdo.errorReason());
-          }
-
-          //Gui TDS_SLV1
-          if(Firebase.RTDB.setFloat(&fbdo, "Sensor/TDS_data1", TDS_1)) {
-            //Serial.println();
-            //Serial.println("- Thành công lưu đến: " + fbdo.dataPath());
-            //Serial.println(" (" + fbdo.dataType() + ") ");
-          }
-          else {
-            Serial.println("Thất bại: " + fbdo.errorReason());
-          }
-
-          //Gui WTR_SLV2
-          if(Firebase.RTDB.setFloat(&fbdo, "Sensor/WTR_data2", WTR_2)) {
-            //Serial.println();
-            //Serial.println("- Thành công lưu đến: " + fbdo.dataPath());
-            //Serial.println(" (" + fbdo.dataType() + ") ");
-          }
-          else {
-            Serial.println("Thất bại: " + fbdo.errorReason());
-          }
-
-          //Gui PH_SLV2
-          if(Firebase.RTDB.setFloat(&fbdo, "Sensor/PH_data2", PH_2)) {
-            //Serial.println();
-            //Serial.println("- Thành công lưu đến: " + fbdo.dataPath());
-            //Serial.println(" (" + fbdo.dataType() + ") ");
-          }
-          else {
-            Serial.println("Thất bại: " + fbdo.errorReason());
-          }
-
-          //Gui TDS_SLV2
-          if(Firebase.RTDB.setFloat(&fbdo, "Sensor/TDS_data2", TDS_2)) {
-            //Serial.println();
-            //Serial.println("- Thành công lưu đến: " + fbdo.dataPath());
-            //Serial.println(" (" + fbdo.dataType() + ") ");
-          }
-          else {
-            Serial.println("Thất bại: " + fbdo.errorReason());
+      if (!frameOn) {
+        if (c == '<') {
+          frameOn = true;
+          frameIdx = 0;
+          frameBuf[frameIdx++] = c;
         }
-      timing.prev_send_data = now_send_data;
-    }
-  }
-}
+          continue;
+      }
 
-void send_state_to_firebase(){
-  if (Firebase.ready() && signUpOK) {
-    if (Firebase.RTDB.setInt(&fbdo, "Sensor/LED", ledStatus)) {
-      Serial.println("Gui trang thai len Firebase thanh cong");
-      old_firebase_status = ledStatus;
-      } 
-    else {
-      Serial.println("Gui firebase that bai: " + String(fbdo.errorReason().c_str()));
+      if (frameIdx < sizeof(frameBuf) - 1) {
+        frameBuf[frameIdx++] = c;
+      } else {
+        frameOn = false;
+        frameIdx = 0;
+        continue;
+      }
+
+      if (c == '\n') {
+        frameBuf[frameIdx] = '\0';
+        Serial.print("Chuoi nhan duoc: ");
+        Serial.println(frameBuf);
+
+      if (strncmp(frameBuf, "<S1,", 4) == 0) processSLV1Data(frameBuf);
+      else if (strncmp(frameBuf, "<S2,", 4) == 0) processSLV2Data(frameBuf);
+      else Serial.println("Khong nhan dien duoc slave_id");
+
+      frameOn = false;
+      frameIdx = 0;
+      buffer.index = 0; // Làm sạch buffer nếu cần
     }
   }
 }
 
 void lcd_change_led_state(){
-  if (ledStatus != oldLedStatus) {
+  if (status.ledStatus != status.oldLedStatus) {
   //Chi cap nhat LCD khi co thay doi de do lagg
     tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
     tft.fillRect(160, 160, 60, 15, ILI9341_BLACK);
     tft.setCursor(150, 160);
-    if (ledStatus == 1) {
+    if (status.ledStatus == 1) {
       tft.print("ON");
     } 
     else {
       tft.print("OFF");
     }
-      oldLedStatus = ledStatus; 
+      status.oldLedStatus = status.ledStatus; 
   }
 }
 
 void loop() {
   static uint8_t slave_id = 1;
-  poll_id(slave_id);
-  nhan_data();
-  //readFirebaseData();
-  //send_value_to_firebase();
+  poll_id(slave_id, buffer);
+  nhan_data(buffer);;
+  readFirebaseData(&pin, &status);
+  send_value_to_firebase(&timing, &data);
 
   unsigned long nowww = millis();
   if(nowww - timing.prev_send_fb > timing.interval_send_fb){
-    readFirebaseData();
+    readFirebaseData(&pin, &status);
     timing.prev_send_fb = nowww;
   }
 
   //Chi cap nhat Firebase khi co thay doi de do lagg
-  if(ledStatus != old_firebase_status){
-    send_state_to_firebase();
+  if (buttonPressed) {
+    status.ledStatus = !status.ledStatus;
+    digitalWrite(pin.LED_PIN, status.ledStatus);
+    buttonPressed = false; // Reset cờ
+  }
+
+  if (status.ledStatus != status.old_firebase_status) {
+    send_state_to_firebase(&status);
     lcd_change_led_state();
   }
+
   //delay(3000);
-  //readDailyTaskSchedule();
   // Serial.printf("Giờ hiện tại: %02d:%02d:%02d - Ngày: %04d-%02d-%02d\n",
   //               timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec,
   //               timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday);
   now = time(nullptr);
   localtime_r(&now, &timeinfo);
 
-  if (timeinfo.tm_hour == taskHour_on && timeinfo.tm_min == taskMinute_on && last_run_day_on != timeinfo.tm_mday) {
+  if (timeinfo.tm_hour == daily_task.taskHour_on && timeinfo.tm_min == daily_task.taskMinute_on && status.last_run_day_on != timeinfo.tm_mday) {
     daily_task_test_on();  
     //Dam bao chi chay 1 lan trong ngay
-    last_run_day_on = timeinfo.tm_mday;  
+    status.last_run_day_on = timeinfo.tm_mday;  
   }
-  if (timeinfo.tm_hour == taskHour_off && timeinfo.tm_min == taskMinute_off && last_run_day_off != timeinfo.tm_mday) {
+  if (timeinfo.tm_hour == daily_task.taskHour_off && timeinfo.tm_min == daily_task.taskMinute_off && status.last_run_day_off != timeinfo.tm_mday) {
     daily_task_test_off();
     //Dam bao chi chay 1 lan trong ngay  
-    last_run_day_off = timeinfo.tm_mday;  
+    status.last_run_day_off = timeinfo.tm_mday;  
   }
 } 
