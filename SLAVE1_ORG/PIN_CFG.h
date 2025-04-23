@@ -3,13 +3,14 @@
 
 #include <Arduino.h>
 
-typedef struct peripheral_pin{
+typedef struct{
   uint8_t ZIGBEE_RX;
   uint8_t ZIGBEE_TX;
   uint8_t VCC_WTR;
   uint8_t WTR_PIN;
   uint8_t P0_PIN;
   uint8_t TDS_PIN;
+  uint8_t DS18B20_PIN;
 } peripheral;
 
 extern peripheral pin;
