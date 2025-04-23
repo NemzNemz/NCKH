@@ -9,4 +9,5 @@ void pin_cfg_init(peripheral *pin){
   pin->WTR_PIN = 34;
   pin->P0_PIN = 35;
   pin->TDS_PIN = 32;
+  pin->DS18B20_PIN = 5;
 }
