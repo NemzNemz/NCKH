@@ -72,54 +72,54 @@ void test_in_log(){
 }
 
 void loop() {
-  test_in_log();
-  delay(2000);
-  // uart_event_t event;
-  // //Neu co su kien (wait max 300ms)
-  // if(xQueueReceive(uart_queue, &event, pdMS_TO_TICKS(500))){
-  //   //Neu su kien la UART_DATA
-  //   if(event.type == UART_DATA){
-  //     //Tao buffer luu data
-  //     char rx_buf[50];
-  //     //doc tung byte data UART vao bo nho dem(buffer) bang UART_read_bytes
-  //     int len = uart_read_bytes(uart_var.uart_num, rx_buf, event.size, 0);
-  //     //Mo rong neu nhu co van de ve data, dam bao data khong rong
-  //     if(len == 0){
-  //       uart_flush_input(uart_var.uart_num); 
-  //       return;
-  //     }
-  //     //Dam bao ket thuc chuoi
-  //     rx_buf[len] = '\0';
+  //test_in_log();
+  //delay(2000);
+  uart_event_t event;
+  //Neu co su kien (wait max 300ms)
+  if(xQueueReceive(uart_queue, &event, pdMS_TO_TICKS(500))){
+    //Neu su kien la UART_DATA
+    if(event.type == UART_DATA){
+      //Tao buffer luu data
+      char rx_buf[50];
+      //doc tung byte data UART vao bo nho dem(buffer) bang UART_read_bytes
+      int len = uart_read_bytes(uart_var.uart_num, rx_buf, event.size, 0);
+      //Mo rong neu nhu co van de ve data, dam bao data khong rong
+      if(len == 0){
+        uart_flush_input(uart_var.uart_num); 
+        return;
+      }
+      //Dam bao ket thuc chuoi
+      rx_buf[len] = '\0';
         
-  //     //Neu data nhan la SLAVE_COMMAND(SLAVE_1)
-  //     if((len == 7 || len == 8) && strncmp(rx_buf, "SLV_01", 6) == 0) {
-  //       raw_wtr(&data);
-  //       water_lv(&data);
-  //       cal_ph(pin.P0_PIN, &data);
-  //       trung_binh_tds(pin.TDS_PIN);
-  //       tds_calculate(&data, pin.TDS_PIN);
+      //Neu data nhan la SLAVE_COMMAND(SLAVE_1)
+      if((len == 7 || len == 8) && strncmp(rx_buf, "SLV_01", 6) == 0) {
+        raw_wtr(&data);
+        water_lv(&data);
+        cal_ph(pin.P0_PIN, &data);
+        trung_binh_tds(pin.TDS_PIN);
+        tds_calculate(&data, pin.TDS_PIN);
 
-  //       //Frame data, co kich thuoc ~ do dai chuoi
-  //       char big_frame[70];
-  //       //Luu buffer bang snprintf voi sizeof (data cuar tcrt_buf)
-  //       uint8_t large_of_frame = snprintf(big_frame, sizeof(big_frame), 
-  //                                   "<S1,WTR=%.1f,PH=%.1f,TDS=%.0f>\n", 
-  //                                   data.water_level, data.ph_value, data.real_tds_value);
+        //Frame data, co kich thuoc ~ do dai chuoi
+        char big_frame[70];
+        //Luu buffer bang snprintf voi sizeof (data cuar tcrt_buf)
+        uint8_t large_of_frame = snprintf(big_frame, sizeof(big_frame), 
+                                    "<S1,WTR=%.1f,PH=%.1f,TDS=%.0f>\n", 
+                                    data.water_level, data.ph_value, data.real_tds_value);
         
-  //       //Kiem tra tran bo dem
-  //       if(large_of_frame <= 0 || large_of_frame >= sizeof(big_frame)){
-  //         //neu loi, bo goi tin
-  //         return;
-  //       }
-  //       //Gui qua master bang uart_write_bytes
-  //       uart_write_bytes(uart_var.uart_num, big_frame, large_of_frame);
-  //       uart_wait_tx_done(uart_var.uart_num, pdMS_TO_TICKS(20));
-  //       uart_flush_input(uart_var.uart_num);
+        //Kiem tra tran bo dem
+        if(large_of_frame <= 0 || large_of_frame >= sizeof(big_frame)){
+          //neu loi, bo goi tin
+          return;
+        }
+        //Gui qua master bang uart_write_bytes
+        uart_write_bytes(uart_var.uart_num, big_frame, large_of_frame);
+        uart_wait_tx_done(uart_var.uart_num, pdMS_TO_TICKS(20));
+        uart_flush_input(uart_var.uart_num);
 
-  //       // In log
-  //       Serial.print("TX-> ");
-  //       Serial.write(big_frame, large_of_frame);
-  //     }
-  //   }
-  // } 
+        // In log
+        Serial.print("TX-> ");
+        Serial.write(big_frame, large_of_frame);
+      }
+    }
+  } 
 }

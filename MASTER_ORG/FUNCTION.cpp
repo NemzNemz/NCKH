@@ -30,9 +30,10 @@ void send_value_to_firebase(timing_variables *timing, last_data_value *data) {
             send_firebase_float(&fbdo, "Sensor/WTR_data1", data->last_WTR_SLV1);
             send_firebase_float(&fbdo, "Sensor/PH_data1", data->last_PH_SLV1);
             send_firebase_float(&fbdo, "Sensor/TDS_data1", data->last_TDS_SLV1);
-            send_firebase_float(&fbdo, "Sensor/WTR_data2", data->last_WTR_SLV2);
-            send_firebase_float(&fbdo, "Sensor/PH_data2", data->last_PH_SLV2);
-            send_firebase_float(&fbdo, "Sensor/TDS_data2", data->last_TDS_SLV2);
+            
+            send_firebase_float(&fbdo, "Sensor//WTR_data2", data->last_WTR_SLV2);
+            send_firebase_float(&fbdo, "Sensor//TDS_data2", data->last_TDS_SLV2);
+            send_firebase_float(&fbdo, "Sensor//PH_data2", data->last_PH_SLV2);
             timing->prev_send_data = now_send_data;
         }
         if (!Firebase.ready() && signUpOK) {
@@ -105,11 +106,11 @@ void poll_id(uint8_t &slave_id, buffer_t &buffer) {
     if (now - prev > interval) {
         if (slave_id == 1) {
             zigbeeSerial.print("SLV_01\n");
-            Serial.println("Gui: SLV_01");
+            //Serial.println("Gui: SLV_01");
             slave_id = 2;
         } else if (slave_id == 2) {
             zigbeeSerial.print("SLV_02\n");
-            Serial.println("Gui: SLV_02");
+            //Serial.println("Gui: SLV_02");
             slave_id = 1;
         }
         prev = now;

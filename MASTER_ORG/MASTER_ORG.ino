@@ -31,8 +31,11 @@ FirebaseAuth auth;
 FirebaseConfig config;
 bool signUpOK = false;
 
+//lan luot la wtr1, wtr2, ph1, ph2, tds1, tds2
 last_data_value data = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-timing_variables timing ={0, 1000, 0, 5000, 0, 150};
+//lan luot la thoi gian doc firebase, thoi gian gui data len firebase
+timing_variables timing ={0, 5000, 0, 5000};
+//lan luot la led, old_led_status, old_firebase_status, bien trang thai da chay ngay do hay chua
 status_var status = {0, -1, -1, -1, -1};
 peripheral pin;
 
@@ -111,11 +114,13 @@ void sync_time() {
 void daily_task_test_on(){
   status.ledStatus = 1;
   digitalWrite(pin.LED_PIN, status.ledStatus);
+  send_state_to_firebase(&status);
 }
 
 void daily_task_test_off(){
   status.ledStatus = 0;
   digitalWrite(pin.LED_PIN, status.ledStatus);
+  send_state_to_firebase(&status);
 }
 
 void setup() {
@@ -229,7 +234,7 @@ void nhan_data(buffer_t &buffer) {
 
       if (c == '\n') {
         frameBuf[frameIdx] = '\0';
-        Serial.print("Chuoi nhan duoc: ");
+        //Serial.print("Chuoi nhan duoc: ");
         Serial.println(frameBuf);
 
       if (strncmp(frameBuf, "<S1,", 4) == 0) processSLV1Data(frameBuf);
@@ -263,9 +268,10 @@ void loop() {
   static uint8_t slave_id = 1;
   poll_id(slave_id, buffer);
   nhan_data(buffer);;
-  readFirebaseData(&pin, &status);
   send_value_to_firebase(&timing, &data);
+  //readDailyTaskSchedule(daily_task);
 
+  //Moi 5s doc data tren firebase 1 lan
   unsigned long nowww = millis();
   if(nowww - timing.prev_send_fb > timing.interval_send_fb){
     readFirebaseData(&pin, &status);
@@ -284,7 +290,7 @@ void loop() {
     lcd_change_led_state();
   }
 
-  //delay(3000);
+  // delay(3000);
   // Serial.printf("Giờ hiện tại: %02d:%02d:%02d - Ngày: %04d-%02d-%02d\n",
   //               timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec,
   //               timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday);
@@ -294,11 +300,11 @@ void loop() {
   if (timeinfo.tm_hour == daily_task.taskHour_on && timeinfo.tm_min == daily_task.taskMinute_on && status.last_run_day_on != timeinfo.tm_mday) {
     daily_task_test_on();  
     //Dam bao chi chay 1 lan trong ngay
-    status.last_run_day_on = timeinfo.tm_mday;  
+    //status.last_run_day_on = timeinfo.tm_mday;  
   }
   if (timeinfo.tm_hour == daily_task.taskHour_off && timeinfo.tm_min == daily_task.taskMinute_off && status.last_run_day_off != timeinfo.tm_mday) {
     daily_task_test_off();
     //Dam bao chi chay 1 lan trong ngay  
-    status.last_run_day_off = timeinfo.tm_mday;  
+    //status.last_run_day_off = timeinfo.tm_mday;  
   }
 } 
