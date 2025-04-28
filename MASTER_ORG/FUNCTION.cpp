@@ -44,9 +44,9 @@ void send_value_to_firebase(timing_variables *timing, last_data_value *data) {
 
 void send_state_to_firebase(status_var *status) {
     if (Firebase.ready() && signUpOK) {
-        if (Firebase.RTDB.setInt(&fbdo, "Sensor/LED", status->ledStatus)) {
+        if (Firebase.RTDB.setInt(&fbdo, "Sensor/LED", status->motor_status)) {
             Serial.println("Gui trang thai len Firebase thanh cong");
-            status->old_firebase_status = status->ledStatus;
+            status->old_firebase_status = status->motor_status;
         } else {
             Serial.println("Gui firebase that bai: " + String(fbdo.errorReason().c_str()));
         }
@@ -63,8 +63,8 @@ void tokenStatusCallback(token_info_t info) {
 void readFirebaseData(peripheral *pin, status_var *status) {
     if (Firebase.ready() && signUpOK) {
         if (Firebase.RTDB.getInt(&fbdo, "Sensor/LED")) {
-            status->ledStatus = atoi(fbdo.stringData().c_str());
-            digitalWrite(pin->LED_PIN, status->ledStatus);
+            status->motor_status = atoi(fbdo.stringData().c_str());
+            digitalWrite(pin->LED_PIN, status->motor_status);
         } else {
             String errorReason = String(fbdo.errorReason().c_str());
             Serial.println("Lỗi đọc từ Firebase: " + errorReason);

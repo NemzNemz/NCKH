@@ -31,12 +31,37 @@ FirebaseAuth auth;
 FirebaseConfig config;
 bool signUpOK = false;
 
-//lan luot la wtr1, wtr2, ph1, ph2, tds1, tds2
-last_data_value data = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+//Chi tiet bien kiem soat gia tri lan truoc
+last_data_value data = {
+  .last_WTR_SLV1 = 0.0,  
+  .last_WTR_SLV2 = 0.0,
+  .last_PH_SLV1 = 0.0,
+  .last_PH_SLV2 = 0.0,
+  .last_TDS_SLV1 = 0.0,
+  .last_TDS_SLV2 = 0.0
+};
 //lan luot la thoi gian doc firebase, thoi gian gui data len firebase
-timing_variables timing ={0, 5000, 0, 5000};
+timing_variables timing ={
+  .prev_send_fb = 0,
+  .interval_send_fb = 5000,         
+  .prev_send_data = 0,
+  .interval_send_data = 5000
+};
 //lan luot la led, old_led_status, old_firebase_status, bien trang thai da chay ngay do hay chua
-status_var status = {0, -1, -1, -1, -1};
+status_var status = {
+  .motor_status = 0,
+  .old_motor_status = -1, 
+  .old_firebase_status = 1,
+  .last_run_day_on = -1,
+  .last_run_day_off = 1
+};
+//Cau hinh chi tiet pwm cho motor
+pwm_propeties motor_cfg = {
+  .frequency = 30000,    //Tan so 30kHz
+  .pwm_channel = 0,      //Kenh PWM 0
+  .resolution = 8,       //8 bit phan giai
+  .duty_cycle = 190      
+};
 peripheral pin;
 
 //Khoi tao LCD
@@ -56,6 +81,27 @@ void IRAM_ATTR nhan_nut() {
     buttonPressed = true;
     lastInterruptTime = interruptTime;
   }
+}
+
+void test_dc_quay_thuan(){
+  Serial.println("Quay deu quay deu!");
+  digitalWrite(pin.MOTOR_PIN1, LOW);
+  digitalWrite(pin.MOTOR_PIN2, HIGH);
+  ledcWrite(motor_cfg.pwm_channel, motor_cfg.duty_cycle);
+}
+
+void test_dc_quay_nghich(){
+  Serial.println("Quay ko deu quay ko deu!");
+  digitalWrite(pin.MOTOR_PIN1, HIGH);
+  digitalWrite(pin.MOTOR_PIN2, LOW);
+  ledcWrite(motor_cfg.pwm_channel, motor_cfg.duty_cycle);
+}
+
+void test_dc_ngung(){
+  Serial.println("Ngung di ngung di!");
+  digitalWrite(pin.MOTOR_PIN1, LOW);
+  digitalWrite(pin.MOTOR_PIN2, LOW);
+  ledcWrite(motor_cfg.pwm_channel, 0);
 }
 
 void in_text_ra_lcd(){
@@ -89,7 +135,7 @@ void in_text_ra_lcd(){
 
     tft.setCursor(20, 160);
     tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
-    tft.println("LED_STATE:");
+    tft.println("MOTOR_STATE:");
 }
 
 void sync_time() {
@@ -112,22 +158,29 @@ void sync_time() {
 }
 
 void daily_task_test_on(){
-  status.ledStatus = 1;
-  digitalWrite(pin.LED_PIN, status.ledStatus);
+  status.motor_status = 1;
+  digitalWrite(pin.LED_PIN, status.motor_status);
   send_state_to_firebase(&status);
 }
 
 void daily_task_test_off(){
-  status.ledStatus = 0;
-  digitalWrite(pin.LED_PIN, status.ledStatus);
+  status.motor_status = 0;
+  digitalWrite(pin.LED_PIN, status.motor_status);
   send_state_to_firebase(&status);
 }
 
 void setup() {
   Serial.begin(115200);
+  //Khoi tao cau hinh chan ngoai vi
   peripheral_init(&pin);
   pinMode(pin.LED_PIN, OUTPUT);
   pinMode(pin.BUTTON_PIN, INPUT_PULLUP);
+  pinMode(pin.MOTOR_PIN1, OUTPUT);
+  pinMode(pin.MOTOR_PIN2, OUTPUT);
+  //Cau hinh PWM, bao gom chon kenh va chi dinh kenh pwm vao chan cu the
+  ledcSetup(motor_cfg.pwm_channel, motor_cfg.frequency, motor_cfg.resolution);
+  ledcAttachPin(pin.ENABLE, motor_cfg.pwm_channel);
+  //Cau hinh ngat
   attachInterrupt(digitalPinToInterrupt(pin.BUTTON_PIN), nhan_nut, FALLING);
   digitalWrite(pin.LED_PIN, 0);
 
@@ -156,7 +209,7 @@ void setup() {
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
   //Doc cau hinh thoi gian
-  readDailyTaskSchedule(daily_task);  
+  //readDailyTaskSchedule(daily_task);  
 
   in_text_ra_lcd();
   zigbeeSerial.begin(115200, SERIAL_8N1, pin.ZIGBEE_RX, pin.ZIGBEE_TX);
@@ -248,23 +301,31 @@ void nhan_data(buffer_t &buffer) {
   }
 }
 
-void lcd_change_led_state(){
-  if (status.ledStatus != status.oldLedStatus) {
+void lcd_change_motor_status(){
+  if (status.motor_status != status.old_motor_status) {
   //Chi cap nhat LCD khi co thay doi de do lagg
     tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
-    tft.fillRect(160, 160, 60, 15, ILI9341_BLACK);
-    tft.setCursor(150, 160);
-    if (status.ledStatus == 1) {
+    tft.fillRect(170, 160, 60, 15, ILI9341_BLACK);
+    tft.setCursor(170, 160);
+    if (status.motor_status == 1) {
       tft.print("ON");
     } 
     else {
       tft.print("OFF");
     }
-      status.oldLedStatus = status.ledStatus; 
+      status.old_motor_status = status.motor_status; 
   }
 }
 
 void loop() {
+  // test_dc_quay_thuan();
+  // delay(5000);
+  // test_dc_ngung();
+  // delay(1500);
+  // test_dc_quay_nghich();
+  // delay(5000);
+  // test_dc_ngung();
+  // delay(1500);
   static uint8_t slave_id = 1;
   poll_id(slave_id, buffer);
   nhan_data(buffer);;
@@ -280,14 +341,22 @@ void loop() {
 
   //Chi cap nhat Firebase khi co thay doi de do lagg
   if (buttonPressed) {
-    status.ledStatus = !status.ledStatus;
-    digitalWrite(pin.LED_PIN, status.ledStatus);
+    status.motor_status = !status.motor_status;
+    digitalWrite(pin.LED_PIN, status.motor_status);
     buttonPressed = false; // Reset cờ
   }
 
-  if (status.ledStatus != status.old_firebase_status) {
-    send_state_to_firebase(&status);
-    lcd_change_led_state();
+  if (status.motor_status != status.old_firebase_status) {
+    if(status.motor_status){
+      test_dc_quay_thuan();
+      send_state_to_firebase(&status);
+      lcd_change_motor_status();
+    }
+    else if(status.motor_status== false){
+      test_dc_ngung();
+      send_state_to_firebase(&status);
+      lcd_change_motor_status();
+    }
   }
 
   // delay(3000);
