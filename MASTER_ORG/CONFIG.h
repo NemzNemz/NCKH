@@ -27,7 +27,7 @@ typedef struct{
   unsigned long prev_send_fb;   
   uint16_t interval_send_fb;         
   unsigned long prev_send_data;   
-  uint16_t interval_send_data;    
+  uint16_t interval_send_data;  
 }timing_variables;
 
 //Cac bien cau hinh pwm
