@@ -45,7 +45,7 @@ void send_value_to_firebase(timing_variables *timing, last_data_value *data) {
 void send_state_to_firebase(status_var *status) {
     if (Firebase.ready() && signUpOK) {
         if (Firebase.RTDB.setInt(&fbdo, "Sensor/LED", status->motor_status)) {
-            Serial.println("Gui trang thai len Firebase thanh cong");
+            Serial.println("Gui len Firebase!");
             status->old_firebase_status = status->motor_status;
         } else {
             Serial.println("Gui firebase that bai: " + String(fbdo.errorReason().c_str()));
