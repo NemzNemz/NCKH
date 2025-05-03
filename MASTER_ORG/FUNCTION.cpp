@@ -42,15 +42,24 @@ void send_value_to_firebase(timing_variables *timing, last_data_value *data) {
     }
 }
 
-void send_state_to_firebase(status_var *status) {
-    if (Firebase.ready() && signUpOK) {
-        if (Firebase.RTDB.setInt(&fbdo, "Sensor/LED", status->motor_status)) {
-            Serial.println("Gui len Firebase!");
-            status->old_firebase_status = status->motor_status;
-        } else {
-            Serial.println("Gui firebase that bai: " + String(fbdo.errorReason().c_str()));
-        }
+void send_state_to_firebase(control_status *status) {
+  static unsigned long last_firebase_send = 0;
+  unsigned long current_time = millis();
+  
+  // De tranh gui qua nhieu lan (log qua nhieu lan) dan den lag
+  if (current_time - last_firebase_send < 1000) {
+    return; //Thoat khoi chuong trinh
+  }
+  
+  if (Firebase.ready() && signUpOK) {
+    if (Firebase.RTDB.setInt(&fbdo, "Sensor/LED", status->motor_status)) {
+      Serial.println("Gui len Firebase!");
+      status->old_firebase_status = status->motor_status;
+      last_firebase_send = current_time; // Record the time of successful send
+    } else {
+      Serial.println("Gui firebase that bai: " + String(fbdo.errorReason().c_str()));
     }
+  }
 }
 
 void tokenStatusCallback(token_info_t info) {
@@ -60,7 +69,7 @@ void tokenStatusCallback(token_info_t info) {
     }
 }
 
-void readFirebaseData(peripheral *pin, status_var *status) {
+void readFirebaseData(peripheral *pin, control_status *status) {
     if (Firebase.ready() && signUpOK) {
         if (Firebase.RTDB.getInt(&fbdo, "Sensor/LED")) {
             status->motor_status = atoi(fbdo.stringData().c_str());
@@ -116,6 +125,26 @@ void poll_id(uint8_t &slave_id, buffer_t &buffer) {
         prev = now;
         buffer.index = 0;
         buffer.data[0] = '\0';
+    }
+}
+
+String gate_status(float ppm_sea, float ppm_river) {
+    //Tranh viec tu thay doi trang thai cong vao luc khoi dau
+    if (ppm_sea == 0 && ppm_river == 0) return "NONE";
+    //Neu ppm bien cao hon ppm song
+    if (ppm_sea > ppm_river) { 
+        if (ppm_sea > 1000) {
+            return "ĐÓNG";
+        } else {
+            return "ĐÓNG";
+        }
+    //Neu ppm bien thap hon ppm song
+    } else { 
+        if (ppm_sea > 1000) {
+            return "ĐÓNG";
+        } else {
+            return "MỞ";
+        }
     }
 }
 
