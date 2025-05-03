@@ -10,6 +10,11 @@
 #define API_KEY "AIzaSyCNLfTrT6w3K2ipz9DBT198YocfGbZarII"
 #define DATABASE_URL "https://nckh-dd303-default-rtdb.firebaseio.com/"
 
+//DEFINE VÀI BIẾN TRẠNG THÁI DỄ QUÊN 
+#define MOTOR_STATE_STOPPED 0
+#define MOTOR_STATE_OPENING 1
+#define MOTOR_STATE_CLOSING -1
+
 bool frameOn = false;     // đang trong giai đoạn ghi frame
 size_t frameIdx = 0;      // chỉ số write buffer
 char frameBuf[64];        // lưu khung "<Sx…>\n"
@@ -40,21 +45,26 @@ last_data_value data = {
   .last_TDS_SLV1 = 0.0,
   .last_TDS_SLV2 = 0.0
 };
+
 // lan luot la thoi gian doc firebase, thoi gian gui data len firebase
 timing_variables timing = {
   .prev_send_fb = 0,
   .interval_send_fb = 5000,         
   .prev_send_data = 0,
-  .interval_send_data = 5000
+  .interval_send_data = 5000,
+  .motor_start_time = 0,
+  .motor_run_duration = 3000
 };
+
 // lan luot la led, old_led_status, old_firebase_status, bien trang thai da chay ngay do hay chua
-status_var status = {
+control_status status = {
   .motor_status = 0,
   .old_motor_status = -1, 
   .old_firebase_status = 1,
   .last_run_day_on = -1,
   .last_run_day_off = -1
 };
+
 // Cau hinh chi tiet pwm cho motor
 pwm_propeties motor_cfg = {
   .frequency = 5000,    // Tan so 5kHz
@@ -73,32 +83,13 @@ portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 HardwareSerial zigbeeSerial(1); 
 
 volatile bool buttonPressed = false;
-static unsigned long startTime = 0;      // Mốc thời gian bắt đầu quay
-const unsigned long runDuration = 3000;  // Thời gian chạy motor (3 giây)
-static int motorDirection = 0;           // 0: dừng, 1: quay thuận, 2: quay nghịch
-static int previousStatus = 0;           // Trạng thái motor trước đó để kiểm tra thay đổi
+static int motor_direction = MOTOR_STATE_STOPPED;          
+static int previous_motor_status = MOTOR_STATE_STOPPED;           // Trạng thái motor trước đó để kiểm tra thay đổi
 
 // Add these variables to the global declaration section
-String gateState = ""; // Current gate state
-String lastGateState = ""; // Store the previous gate state
+String gate_state = ""; // Current gate state
+String lastgate_state = ""; // Store the previous gate state
 bool commandExecuted = true; // Flag to indicate if the command has been executed
-
-// Hàm xác định trạng thái cống dựa trên PPM
-String determineGateState(float ppm_sea, float ppm_river) {
-    if (ppm_sea > ppm_river) { // Nước Biển > Sông
-        if (ppm_sea > 1000) {
-            return "ĐÓNG";
-        } else {
-            return "ĐÓNG";
-        }
-    } else { // Nước Biển < Sông
-        if (ppm_sea > 1000) {
-            return "KIỂM SOÁT (ĐÓNG)";
-        } else {
-            return "MỞ";
-        }
-    }
-}
 
 void IRAM_ATTR nhan_nut() {
   static unsigned long lastInterruptTime = 0;
@@ -185,20 +176,18 @@ void sync_time() {
   lastNTPUpdate = millis(); 
 }
 
-void daily_task_test_on() {
-  motorDirection = 1; // Quay thuận
-  startTime = 0; // Reset thời gian để chạy lại
+void daily_task_on() {
+  motor_direction = MOTOR_STATE_OPENING; 
+  timing.motor_start_time = 0; // Reset thời gian để chạy lại
   status.motor_status = 1; // Cập nhật trạng thái motor
   digitalWrite(pin.LED_PIN, status.motor_status);
-  send_state_to_firebase(&status);
 }
 
-void daily_task_test_off() {
-  motorDirection = 2; // Quay nghịch
-  startTime = 0; // Reset thời gian để chạy lại
+void daily_task_off() {
+  motor_direction = MOTOR_STATE_CLOSING; // Quay nghịch
+  timing.motor_start_time = 0; // Reset thời gian để chạy lại
   status.motor_status = 0; // Cập nhật trạng thái motor
   digitalWrite(pin.LED_PIN, status.motor_status);
-  send_state_to_firebase(&status);
 }
 
 void setup() {
@@ -236,10 +225,18 @@ void setup() {
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
 
+  status.motor_status      = MOTOR_STATE_STOPPED;   //Chong lai viec tu quay ban dau
+  status.old_motor_status  = MOTOR_STATE_STOPPED;
+  status.old_firebase_status = MOTOR_STATE_STOPPED;
+  send_state_to_firebase(&status);
+  delay(200);
+
   //Doc cau hinh thoi gian
-  readDailyTaskSchedule(daily_task);
+  //readDailyTaskSchedule(daily_task);
 
   in_text_ra_lcd();
+  test_dc_ngung();
+  motor_direction = MOTOR_STATE_STOPPED;
   zigbeeSerial.begin(115200, SERIAL_8N1, pin.ZIGBEE_RX, pin.ZIGBEE_TX);
 }
 
@@ -340,36 +337,37 @@ void lcd_change_motor_status() {
 
 void loop() {
   static uint8_t slave_id = 1;
-  poll_id(slave_id, buffer);
-  nhan_data(buffer);
+  //poll_id(slave_id, buffer);
+  //nhan_data(buffer);
   send_value_to_firebase(&timing, &data);
   now = time(nullptr);
   localtime_r(&now, &timeinfo);
   // Update the current gate state based on the latest sensor readings
-  gateState = determineGateState(data.last_TDS_SLV1, data.last_TDS_SLV2);
+  gate_state = gate_status(data.last_TDS_SLV1, data.last_TDS_SLV2);
 
   // Đọc dữ liệu từ Firebase mỗi 5 giây
   unsigned long nowww = millis();
   if (nowww - timing.prev_send_fb > timing.interval_send_fb) {
     readFirebaseData(&pin, &status);
+    //readDailyTaskSchedule(daily_task);
     timing.prev_send_fb = nowww;
   }
 
    // Chỉ thực hiện khi trạng thái thay đổi và lệnh chưa được thực hiện
-  if (gateState != lastGateState && commandExecuted == true) {
-    Serial.println("Trạng thái cống thay đổi từ: " + lastGateState + " sang: " + gateState);
-    lastGateState = gateState; // Cập nhật trạng thái cống
+  if (gate_state != lastgate_state && commandExecuted == true) {
+    Serial.println("Trạng thái cống thay đổi từ: " + lastgate_state + " sang: " + gate_state);
+    lastgate_state = gate_state; // Cập nhật trạng thái cống
     commandExecuted = false; // Đánh dấu lệnh chưa được thực hiện
     
     // Cập nhật trạng thái motor theo trạng thái cổng mới
-    if (gateState == "MỞ" && status.motor_status != 1) {
+    if (gate_state == "MỞ" && status.motor_status != 1) {
       status.motor_status = 1; // Bật motor để mở cống
-      motorDirection = 1;      // Quay thuận để mở
-      startTime = 0;           // Reset thời gian
-    } else if ((gateState == "ĐÓNG" || gateState == "KIỂM SOÁT (ĐÓNG)") && status.motor_status != 0) {
+      motor_direction = MOTOR_STATE_OPENING;      // Quay thuận để mở
+      timing.motor_start_time = 0;           // Reset thời gian
+    } else if (gate_state == "ĐÓNG" && status.motor_status != 0) {
       status.motor_status = 0; // Tắt motor để đóng cống
-      motorDirection = 2;      // Quay nghịch để đóng
-      startTime = 0;           // Reset thời gian
+      motor_direction = MOTOR_STATE_CLOSING;      // Quay nghịch để đóng
+      timing.motor_start_time = 0;           // Reset thời gian
     } else {
       // Nếu không cần thay đổi trạng thái motor, đánh dấu đã thực hiện lệnh
       commandExecuted = true;
@@ -377,66 +375,82 @@ void loop() {
   }
 
   // Đặt lệnh đã thực hiện sau khi motor hoàn thành
-  if (motorDirection == 0) {
+  if (motor_direction == MOTOR_STATE_STOPPED) {
     commandExecuted = true;
   }
 
-  // Kiểm tra thay đổi trạng thái motor từ Firebase
-  if (status.motor_status != previousStatus) {
-    motorDirection = (status.motor_status == 1) ? 1 : 2;
-    startTime = 0;
-    Serial.print("Huong dong co (Firebase): ");
-    if (motorDirection == 1) Serial.println("Thuan");
-    else Serial.println("Nghich");
-    previousStatus = status.motor_status;
+  if (status.motor_status != previous_motor_status) {
+      if (status.motor_status == 1) {
+          motor_direction = MOTOR_STATE_OPENING; // Quay thuận
+          Serial.println("Huong dong co (Firebase): Thuan");
+      } else {
+          motor_direction = MOTOR_STATE_CLOSING; // Quay nghịch
+          Serial.println("Huong dong co (Firebase): Nghich");
+      }
+      timing.motor_start_time = 0;
+      previous_motor_status = status.motor_status;
   }
 
-  // Xử lý nhấn nút
+  //Xu ly khi an nut (NGAT)
+  //Neu bien nut nhan thanh true, doi no thanh false lai (vi truoc do da danh dau an nut)
+  //Dao trang thai motor va LED dua vao trang thai motor luon
   if (buttonPressed) {
-    buttonPressed = false;
-    status.motor_status = !status.motor_status;
-    digitalWrite(pin.LED_PIN, status.motor_status);
-    motorDirection = (status.motor_status == 1) ? 1 : 2;
-    startTime = 0;
-    Serial.print("Huong dong co (Nut nhan): ");
-    if (motorDirection == 1) Serial.println("Thuan");
-    else Serial.println("Nghich");
-    previousStatus = status.motor_status;
+      buttonPressed = false;
+      status.motor_status = !status.motor_status;
+      digitalWrite(pin.LED_PIN, status.motor_status);
+      //Neu doi thanh 1 thi mo, ko thi dong
+      if (status.motor_status == 1) {
+          motor_direction = MOTOR_STATE_OPENING;
+          Serial.println("CUA DANG MO!");
+      } else {
+          motor_direction = MOTOR_STATE_CLOSING;
+          Serial.println("CUA DANG DONG!");
+      }
+      //Bat dau bo dem thoi gian dong co chay
+      //Cap nhat trang thai dong co truoc do luon
+      timing.motor_start_time = 0;
+      previous_motor_status = status.motor_status;
   }
 
-  // Điều khiển động cơ
-  if (startTime == 0 && motorDirection != 0) {
-    if (motorDirection == 1) {
+  // Neu thoi gian dong co hoat dong = 0 va ko o trang thai ngung
+  if (timing.motor_start_time == 0 && motor_direction != MOTOR_STATE_STOPPED) {
+    //Neu dang o trang thai opening thi chay cai quay thuan, ko thi quay nghich
+    if (motor_direction == MOTOR_STATE_OPENING) {
       test_dc_quay_thuan();
-    } else if (motorDirection == 2) {
+    } else if (motor_direction == MOTOR_STATE_CLOSING) {
       test_dc_quay_nghich();
     }
-    startTime = millis();
-  } else if (startTime != 0 && (millis() - startTime >= runDuration)) {
+    //Bat dau dem thoi gian dong co chay
+    timing.motor_start_time = millis();
+    //Neu nhu thoi gian dong co chay khac 0 va bo dem millis() - thoi gian dong co chay lon hon chu ki 3s thi ngung
+  } else if (timing.motor_start_time != 0 && (millis() - timing.motor_start_time >= timing.motor_run_duration)) {
     test_dc_ngung();
-    startTime = 0;
-    motorDirection = 0;
+    timing.motor_start_time = 0;
+    motor_direction = MOTOR_STATE_STOPPED;
   }
 
-  // Kiểm tra và thực hiện daily task
-  if (timeinfo.tm_hour == daily_task.taskHour_on && timeinfo.tm_min == daily_task.taskMinute_on && status.last_run_day_on != timeinfo.tm_mday) {
-    daily_task_test_on();
+  //Check daily task, dung gio phut la chay
+  if (timeinfo.tm_hour == daily_task.taskHour_on && 
+      timeinfo.tm_min == daily_task.taskMinute_on && 
+      status.last_run_day_on != timeinfo.tm_mday) {
+    daily_task_on();
     lcd_change_motor_status();
     status.last_run_day_on = timeinfo.tm_mday;
-    previousStatus = status.motor_status;
   }
 
-  if (timeinfo.tm_hour == daily_task.taskHour_off && timeinfo.tm_min == daily_task.taskMinute_off && status.last_run_day_off != timeinfo.tm_mday) {
-    daily_task_test_off();
+  if (timeinfo.tm_hour == daily_task.taskHour_off && 
+      timeinfo.tm_min == daily_task.taskMinute_off && 
+      status.last_run_day_off != timeinfo.tm_mday) {
+    daily_task_off();
     lcd_change_motor_status();
     status.last_run_day_off = timeinfo.tm_mday;
-    previousStatus = status.motor_status;
   }
 
-  // Cập nhật trạng thái trên Firebase và LCD
+  //Neu nhu trang thai motor khac trang thai cu tren firebase
+  //Gui trang thai hien tai len firebase
+  //Doi text LCD
   if (status.motor_status != status.old_firebase_status) {
     send_state_to_firebase(&status);
     lcd_change_motor_status();
-    status.old_firebase_status = status.motor_status;
   }
 }
