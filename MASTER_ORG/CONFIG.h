@@ -28,6 +28,8 @@ typedef struct{
   uint16_t interval_send_fb;         
   unsigned long prev_send_data;   
   uint16_t interval_send_data;  
+  unsigned long motor_start_time;
+  uint16_t motor_run_duration;
 }timing_variables;
 
 //Cac bien cau hinh pwm
@@ -59,12 +61,12 @@ typedef struct{
 //Trang thai motor, trang thai firebase, trang thai hoat dong cua daily task
 typedef struct{
   volatile int motor_status;   
-  int old_motor_status;           
-  int old_firebase_status;
-  int last_run_day_on;
-  int last_run_day_off;
-}status_var;
-extern status_var status;
+  uint8_t old_motor_status;           
+  uint8_t old_firebase_status;
+  uint8_t last_run_day_on;
+  uint8_t last_run_day_off;
+}control_status;
+extern control_status status;
 
 typedef struct {
     char data[40];
