@@ -13,5 +13,9 @@ void readDailyTaskSchedule(DAILY_TASK &daily_task);
 void send_value_to_firebase(timing_variables *timing, last_data_value *data);
 void send_state_to_firebase(control_status *status);
 String gate_status(float ppm_sea, float ppm_river);
+void nhan_data(buffer_t &buffer);
+void SLV1_data(const char *s, last_data_value &data);
+void SLV2_data(const char *s, last_data_value &data);
+void handle_gate_state_and_direction_by_firebase(control_status &status, int &motor_direction, timing_variables *timing, int &previous_motor_status);
 
 #endif // FUNCTION_H
