@@ -1,15 +1,10 @@
 #ifndef CONFIG_H
 #define CONFIG_H
-#include <Arduino.h>
+#define MOTOR_STOPPED  0
+#define MOTOR_OPENING  1
+#define MOTOR_CLOSING -1
 
-//Danh rieng cho LCD
-typedef struct {
-    uint8_t TFT_CS;
-    uint8_t TFT_DC;
-    uint8_t TFT_MOSI;
-    uint8_t TFT_SCLK;
-    uint8_t TFT_RST;
-} lcd_pin;
+#include <Arduino.h>
 
 //Cac chan ngoai vi
 typedef struct {
